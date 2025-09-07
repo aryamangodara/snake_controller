@@ -10,8 +10,12 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     
-    <!-- QR Code Library -->
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <!-- QR Code Library - Multiple CDN fallbacks -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" 
+            onerror="this.onerror=null; this.src='https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js'"></script>
+    
+    <!-- Font Awesome for social icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
     <!-- Desktop Game View -->
@@ -46,6 +50,10 @@
                         </div>
                         <div class="qr-container">
                             <canvas id="qr-code" width="150" height="150"></canvas>
+                            <div id="qr-loading" class="qr-loading">
+                                <div class="loading-spinner"></div>
+                                <p>Generating QR Code...</p>
+                            </div>
                         </div>
                         <div class="connection-status">
                             <span id="connection-status">Generating session...</span>
@@ -56,6 +64,19 @@
                             <p>3. Use your phone as controller</p>
                         </div>
                     </div>
+                </div>
+            </div>
+            
+            <!-- Creator Credits - Desktop -->
+            <div class="credits">
+                <span class="credits-text">Created by Aryaman Godara</span>
+                <div class="social-links">
+                    <a href="https://www.linkedin.com/in/aryamangodara/" target="_blank" class="social-link linkedin">
+                        <i class="fab fa-linkedin"></i>
+                    </a>
+                    <a href="https://www.instagram.com/aryaman_godara/" target="_blank" class="social-link instagram">
+                        <i class="fab fa-instagram"></i>
+                    </a>
                 </div>
             </div>
         </div>
@@ -117,6 +138,19 @@
                 <div class="controller-instructions">
                     <p>Use the arrow buttons to control the snake</p>
                     <p>Score updates in real-time on the desktop</p>
+                </div>
+            </div>
+            
+            <!-- Creator Credits - Mobile -->
+            <div class="credits mobile-credits">
+                <span class="credits-text">Created by Aryaman Godara</span>
+                <div class="social-links">
+                    <a href="https://www.linkedin.com/in/aryamangodara/" target="_blank" class="social-link linkedin">
+                        <i class="fab fa-linkedin"></i>
+                    </a>
+                    <a href="https://www.instagram.com/aryaman_godara/" target="_blank" class="social-link instagram">
+                        <i class="fab fa-instagram"></i>
+                    </a>
                 </div>
             </div>
         </div>

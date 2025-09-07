@@ -746,7 +746,7 @@ select.form-control {
 
 body {
     font-family: var(--font-family-base);
-    background-color: var(--color-background);
+    background: var(--color-background);
     color: var(--color-text);
     min-height: 100vh;
     overflow-x: hidden;
@@ -754,6 +754,104 @@ body {
 
 .hidden {
     display: none !important;
+}
+
+/* Credits Styles */
+.credits {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-16);
+    margin-top: var(--space-32);
+    padding: var(--space-16);
+    background: var(--color-secondary);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    backdrop-filter: blur(5px);
+}
+
+.credits-text {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.social-links {
+    display: flex;
+    gap: var(--space-10);
+}
+
+.social-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 35px;
+    height: 35px;
+    border-radius: var(--radius-full);
+    text-decoration: none;
+    transition: all var(--duration-normal) var(--ease-standard);
+    font-size: var(--font-size-lg);
+}
+
+.social-link.linkedin {
+    background: var(--color-teal-500);
+    color: var(--color-btn-primary-text);
+}
+
+.social-link.linkedin:hover {
+    background: var(--color-teal-600);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.social-link.instagram {
+    background: var(--color-orange-500);
+    color: var(--color-btn-primary-text);
+}
+
+.social-link.instagram:hover {
+    background: var(--color-orange-400);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.mobile-credits {
+    margin-top: var(--space-20);
+    margin-bottom: var(--space-20);
+}
+
+/* QR Code Loading Styles */
+.qr-loading {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 150px;
+    height: 150px;
+    background: var(--color-secondary);
+    border-radius: var(--radius-md);
+    border: 2px dashed var(--color-primary);
+}
+
+.loading-spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid rgba(var(--color-primary-rgb), 0.3);
+    border-top: 3px solid var(--color-primary);
+    border-radius: var(--radius-full);
+    animation: spin 1s linear infinite;
+    margin-bottom: var(--space-10);
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.qr-loading p {
+    color: var(--color-primary);
+    font-size: var(--font-size-xs);
+    text-align: center;
 }
 
 /* Desktop Styles */
@@ -776,7 +874,7 @@ body {
 .game-title {
     font-size: var(--font-size-4xl);
     color: var(--color-primary);
-    text-shadow: 0 0 var(--space-20) var(--color-primary);
+    text-shadow: 0 0 20px var(--color-primary);
     margin-bottom: var(--space-10);
     font-weight: var(--font-weight-bold);
 }
@@ -837,7 +935,7 @@ body {
     color: var(--color-error);
     font-size: var(--font-size-3xl);
     margin-bottom: var(--space-20);
-    text-shadow: 0 0 var(--space-10) var(--color-error);
+    text-shadow: 0 0 10px var(--color-error);
     font-weight: var(--font-weight-bold);
 }
 
@@ -848,12 +946,12 @@ body {
 
 .session-info {
     background: var(--color-surface);
-    backdrop-filter: blur(var(--space-10));
+    backdrop-filter: blur(10px);
     border-radius: var(--radius-lg);
     padding: var(--space-32);
     border: 1px solid var(--color-card-border);
-    text-align: center;
     box-shadow: var(--shadow-md);
+    text-align: center;
 }
 
 .session-card h3 {
@@ -885,13 +983,14 @@ body {
     padding: var(--space-16);
     border-radius: var(--radius-md);
     border: 2px solid var(--color-primary);
-    text-shadow: 0 0 var(--space-10) var(--color-primary);
+    text-shadow: 0 0 10px var(--color-primary);
 }
 
 .qr-container {
     margin: var(--space-32) 0;
     display: flex;
     justify-content: center;
+    position: relative;
 }
 
 #qr-code {
@@ -941,18 +1040,18 @@ body {
     color: var(--color-primary);
     font-size: var(--font-size-3xl);
     margin-bottom: var(--space-32);
-    text-shadow: 0 0 var(--space-16) var(--color-primary);
+    text-shadow: 0 0 15px var(--color-primary);
     font-weight: var(--font-weight-bold);
 }
 
 .connection-form {
     background: var(--color-surface);
-    backdrop-filter: blur(var(--space-10));
+    backdrop-filter: blur(10px);
     border-radius: var(--radius-lg);
     padding: var(--space-32);
     border: 1px solid var(--color-card-border);
-    margin-bottom: var(--space-20);
     box-shadow: var(--shadow-md);
+    margin-bottom: var(--space-20);
 }
 
 .input-group {
@@ -964,7 +1063,6 @@ body {
     color: var(--color-text);
     margin-bottom: var(--space-10);
     font-size: var(--font-size-lg);
-    font-weight: var(--font-weight-medium);
 }
 
 .input-group input {
@@ -1004,15 +1102,9 @@ body {
     font-size: var(--font-size-base);
     cursor: pointer;
     transition: all var(--duration-normal) var(--ease-standard);
-    font-weight: var(--font-weight-semibold);
+    font-weight: var(--font-weight-medium);
     text-transform: uppercase;
     min-width: 120px;
-    font-family: var(--font-family-base);
-}
-
-.btn:focus-visible {
-    outline: none;
-    box-shadow: var(--focus-ring);
 }
 
 .btn-primary {
@@ -1021,7 +1113,7 @@ body {
 }
 
 .btn-primary:hover, .btn-primary:active {
-    background: var(--color-teal-600);
+    background: var(--color-primary-hover);
     transform: scale(1.05);
 }
 
@@ -1035,14 +1127,19 @@ body {
     transform: scale(1.05);
 }
 
+.btn:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+}
+
 .controller-interface {
     background: var(--color-surface);
-    backdrop-filter: blur(var(--space-10));
+    backdrop-filter: blur(10px);
     border-radius: var(--radius-lg);
     padding: var(--space-32);
     border: 1px solid var(--color-card-border);
-    display: none;
     box-shadow: var(--shadow-md);
+    display: none;
 }
 
 .connection-info {
@@ -1101,14 +1198,13 @@ body {
     font-size: var(--font-size-3xl);
     cursor: pointer;
     transition: all var(--duration-fast) var(--ease-standard);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-md), var(--shadow-inset-sm);
     display: flex;
     align-items: center;
     justify-content: center;
     user-select: none;
     -webkit-user-select: none;
     touch-action: manipulation;
-    border: 2px solid var(--color-border);
 }
 
 .direction-btn:active,
@@ -1117,12 +1213,12 @@ body {
     background: var(--color-primary);
     color: var(--color-btn-primary-text);
     transform: scale(0.95);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-xs);
 }
 
 .direction-btn:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring), var(--shadow-md);
+    box-shadow: var(--focus-ring);
 }
 
 .direction-btn .arrow {
@@ -1154,7 +1250,24 @@ body {
     }
     
     body {
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-base);
+    }
+    
+    .credits {
+        flex-direction: column;
+        gap: var(--space-10);
+        margin-top: var(--space-16);
+        padding: var(--space-12);
+    }
+    
+    .credits-text {
+        font-size: var(--font-size-xs);
+    }
+    
+    .social-link {
+        width: 32px;
+        height: 32px;
+        font-size: var(--font-size-base);
     }
 }
 
@@ -1216,13 +1329,12 @@ body {
         font-size: var(--font-size-2xl);
     }
     
-    .mobile-view {
+    .mobile-container {
         padding: var(--space-16);
     }
     
     .connection-form,
-    .controller-interface,
-    .session-info {
+    .controller-interface {
         padding: var(--space-20);
     }
     
@@ -1232,8 +1344,8 @@ body {
     
     .btn {
         padding: var(--space-12) var(--space-20);
-        min-width: 100px;
         font-size: var(--font-size-sm);
+        min-width: 100px;
     }
 }
 
@@ -1251,7 +1363,7 @@ body {
 }
 
 /* Prevent text selection on interactive elements */
-.direction-btn, .btn, .game-title, .code-value {
+.direction-btn, .btn, .game-title, .code-value, .social-link {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     -khtml-user-select: none;

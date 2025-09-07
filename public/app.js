@@ -14,6 +14,33 @@ const firebaseConfig = {
 let app, database;
 let firebaseReady = false;
 
+// QR Code library loading
+let qrLibraryReady = false;
+let qrLoadAttempts = 0;
+const maxQrLoadAttempts = 5;
+
+// Check for QRCode library availability
+function checkQRCodeLibrary() {
+    if (typeof QRCode !== 'undefined') {
+        qrLibraryReady = true;
+        console.log('QRCode library loaded successfully');
+        return true;
+    }
+    
+    qrLoadAttempts++;
+    if (qrLoadAttempts < maxQrLoadAttempts) {
+        console.log(`QRCode library not ready, attempt ${qrLoadAttempts}/${maxQrLoadAttempts}`);
+        setTimeout(checkQRCodeLibrary, 1000);
+    } else {
+        console.warn('QRCode library failed to load after multiple attempts');
+        qrLibraryReady = false;
+    }
+    return false;
+}
+
+// Start checking for QR library
+setTimeout(checkQRCodeLibrary, 500);
+
 // Wait for Firebase to be ready
 function initializeFirebase() {
     try {
@@ -92,7 +119,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing app...');
     detectDevice();
     // Wait a bit for libraries to load
-    setTimeout(initializeApp, 1000);
+    setTimeout(initializeApp, 1500);
 });
 
 function detectDevice() {
@@ -234,53 +261,113 @@ function generateQRCode(sessionCode) {
     console.log('Generating QR code for session:', sessionCode);
     
     const qrCanvas = document.getElementById('qr-code');
+    const qrLoading = document.getElementById('qr-loading');
+    
     if (!qrCanvas) {
         console.error('QR canvas not found!');
         return;
     }
     
+    // Show loading state
+    if (qrLoading) {
+        qrLoading.style.display = 'block';
+    }
+    qrCanvas.style.display = 'none';
+    
     const gameUrl = `${window.location.origin}${window.location.pathname}?session=${sessionCode}`;
     console.log('QR URL:', gameUrl);
     
-    // Check if QRCode library is loaded
-    if (typeof QRCode !== 'undefined') {
-        try {
-            QRCode.toCanvas(qrCanvas, gameUrl, {
-                width: 150,
-                margin: 2,
-                color: {
-                    dark: '#00ffff',
-                    light: '#ffffff'
-                }
-            }, function(error) {
-                if (error) {
-                    console.error('QR Code generation error:', error);
-                    drawPlaceholderQR(qrCanvas, sessionCode);
+    // Function to try generating QR code
+    function tryGenerateQR() {
+        if (qrLibraryReady && typeof QRCode !== 'undefined') {
+            try {
+                QRCode.toCanvas(qrCanvas, gameUrl, {
+                    width: 150,
+                    margin: 2,
+                    color: {
+                        dark: '#00ffff',
+                        light: '#ffffff'
+                    }
+                }, function(error) {
+                    if (qrLoading) qrLoading.style.display = 'none';
+                    
+                    if (error) {
+                        console.error('QR Code generation error:', error);
+                        drawPlaceholderQR(qrCanvas, sessionCode);
+                    } else {
+                        console.log('QR code generated successfully');
+                        qrCanvas.style.display = 'block';
+                    }
+                });
+            } catch (error) {
+                console.error('QRCode execution error:', error);
+                if (qrLoading) qrLoading.style.display = 'none';
+                drawPlaceholderQR(qrCanvas, sessionCode);
+                qrCanvas.style.display = 'block';
+            }
+        } else {
+            // Check again after a delay
+            setTimeout(() => {
+                if (qrLibraryReady && typeof QRCode !== 'undefined') {
+                    tryGenerateQR();
                 } else {
-                    console.log('QR code generated successfully');
+                    console.warn('QRCode library still not loaded, showing placeholder');
+                    if (qrLoading) qrLoading.style.display = 'none';
+                    drawPlaceholderQR(qrCanvas, sessionCode);
+                    qrCanvas.style.display = 'block';
                 }
-            });
-        } catch (error) {
-            console.error('QRCode execution error:', error);
-            drawPlaceholderQR(qrCanvas, sessionCode);
+            }, 2000);
         }
-    } else {
-        console.warn('QRCode library not loaded, drawing placeholder');
-        drawPlaceholderQR(qrCanvas, sessionCode);
     }
+    
+    // Start trying to generate QR code
+    tryGenerateQR();
 }
 
 function drawPlaceholderQR(canvas, sessionCode) {
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#333';
+    
+    // Clear canvas
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 150, 150);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 14px Arial';
+    
+    // Draw border
+    ctx.strokeStyle = '#00ffff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(2, 2, 146, 146);
+    
+    // QR pattern simulation (corners)
+    ctx.fillStyle = '#000000';
+    
+    // Top-left corner
+    ctx.fillRect(10, 10, 30, 30);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(15, 15, 20, 20);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(20, 20, 10, 10);
+    
+    // Top-right corner
+    ctx.fillRect(110, 10, 30, 30);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(115, 15, 20, 20);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(120, 20, 10, 10);
+    
+    // Bottom-left corner
+    ctx.fillRect(10, 110, 30, 30);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(15, 115, 20, 120);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(20, 120, 10, 10);
+    
+    // Center text
+    ctx.fillStyle = '#00ffff';
+    ctx.font = 'bold 12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('QR Code', 75, 60);
-    ctx.fillText('Placeholder', 75, 80);
-    ctx.font = '12px Arial';
-    ctx.fillText(`Code: ${sessionCode}`, 75, 110);
+    ctx.fillText('QR CODE', 75, 70);
+    ctx.font = '10px Arial';
+    ctx.fillText(`Session: ${sessionCode}`, 75, 85);
+    ctx.fillText('Scan or enter code', 75, 100);
 }
 
 function handleDirectionFromMobile(direction) {
