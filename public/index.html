@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game - Cross Device Controller</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+    <!-- Desktop Game View -->
+    <div id="desktop-view" class="desktop-view">
+        <div class="game-container">
+            <div class="game-header">
+                <h1 class="game-title">Snake Game</h1>
+                <div class="score-display">
+                    <span class="score-label">Score:</span>
+                    <span id="score" class="score-value">0</span>
+                </div>
+            </div>
+            
+            <div class="game-content">
+                <div class="game-board-container">
+                    <canvas id="game-canvas" width="600" height="600"></canvas>
+                    <div id="game-over" class="game-over hidden">
+                        <div class="game-over-content">
+                            <h2>Game Over!</h2>
+                            <p class="final-score">Final Score: <span id="final-score">0</span></p>
+                            <button id="restart-btn" class="btn btn--primary">Play Again</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="session-info">
+                    <div class="session-card">
+                        <h3>Connect Your Phone</h3>
+                        <div class="session-code">
+                            <span class="code-label">Session Code:</span>
+                            <span id="session-code" class="code-value">ABC123</span>
+                        </div>
+                        <div class="qr-container">
+                            <canvas id="qr-code"></canvas>
+                        </div>
+                        <div class="connection-status">
+                            <div id="connection-indicator" class="status-indicator">
+                                <span class="status-dot"></span>
+                                <span id="connection-text">Waiting for connection...</span>
+                            </div>
+                        </div>
+                        <p class="instructions">Open this page on your phone and enter the code or scan the QR code to use your phone as a controller!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Controller View -->
+    <div id="mobile-view" class="mobile-view hidden">
+        <div class="mobile-container">
+            <div class="mobile-header">
+                <h2>Snake Controller</h2>
+                <div class="connection-form">
+                    <input type="text" id="code-input" placeholder="Enter 6-digit code" maxlength="6" class="form-control">
+                    <button id="connect-btn" class="btn btn--primary">Connect</button>
+                </div>
+                <div id="mobile-connection-status" class="connection-status">
+                    <div class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span id="mobile-connection-text">Not connected</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="controller-interface" class="controller-interface hidden">
+                <div class="controller-grid">
+                    <div class="controller-row">
+                        <button id="up-btn" class="direction-btn up-btn" data-direction="up">
+                            <span class="arrow">↑</span>
+                        </button>
+                    </div>
+                    <div class="controller-row">
+                        <button id="left-btn" class="direction-btn left-btn" data-direction="left">
+                            <span class="arrow">←</span>
+                        </button>
+                        <button id="right-btn" class="direction-btn right-btn" data-direction="right">
+                            <span class="arrow">→</span>
+                        </button>
+                    </div>
+                    <div class="controller-row">
+                        <button id="down-btn" class="direction-btn down-btn" data-direction="down">
+                            <span class="arrow">↓</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="controller-info">
+                    <p>Control the snake using the buttons above</p>
+                    <div class="current-session">
+                        Session: <span id="connected-session">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Background Effects -->
+    <div class="background-grid"></div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
