@@ -1,6 +1,20 @@
 {
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null"
+    "sessions": {
+      "$sessionId": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.hasChildren(['created', 'connected'])",
+        "created": {
+          ".validate": "newData.isNumber()"
+        },
+        "connected": {
+          ".validate": "newData.isBoolean()"
+        },
+        "lastDirection": {
+          ".validate": "newData.isString() && (newData.val() == 'up' || newData.val() == 'down' || newData.val() == 'left' || newData.val() == 'right')"
+        }
+      }
+    }
   }
 }

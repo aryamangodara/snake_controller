@@ -1,6 +1,45 @@
-import { database } from './firebase-config.js';
-import { ref, set, onValue, push } from 'firebase/database';
+// Firebase Configuration
+const firebaseConfig = {
+    apiKey: "AIzaSyAt8mVTh9N8zziPCSwhxxRbkcqh93CrNhI",
+    authDomain: "go-console-84748.firebaseapp.com",
+    databaseURL: "https://go-console-84748-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "go-console-84748",
+    storageBucket: "go-console-84748.firebasestorage.app",
+    messagingSenderId: "301266921160",
+    appId: "1:301266921160:web:482979b81d409acd92a7fd",
+    measurementId: "G-0DFSB38H21"
+};
 
+// Initialize Firebase
+let app, database;
+let firebaseReady = false;
+
+// Wait for Firebase to be ready
+function initializeFirebase() {
+    try {
+        if (typeof firebase === 'undefined') {
+            console.warn('Firebase not loaded yet, retrying...');
+            setTimeout(initializeFirebase, 1000);
+            return;
+        }
+        
+        app = firebase.initializeApp(firebaseConfig);
+        database = firebase.database();
+        firebaseReady = true;
+        console.log('Firebase initialized successfully');
+    } catch (error) {
+        console.warn('Firebase initialization failed:', error);
+        console.log('Running in offline mode');
+    }
+}
+
+// Initialize Firebase when DOM is ready or Firebase is loaded
+if (typeof firebase !== 'undefined') {
+    initializeFirebase();
+} else {
+    // Wait for Firebase to load
+    setTimeout(initializeFirebase, 2000);
+}
 
 // Game configuration
 const gameConfig = {
@@ -27,7 +66,7 @@ const GRID_HEIGHT = Math.floor(gameConfig.boardSize.height / gameConfig.gridSize
 // Global game state
 let gameState = {
     snake: [{ x: Math.floor(GRID_WIDTH / 2), y: Math.floor(GRID_HEIGHT / 2) }],
-    direction: { x: 0, y: 0 }, // Start stationary
+    direction: { x: 0, y: 0 },
     nextDirection: { x: 0, y: 0 },
     food: { x: Math.floor(GRID_WIDTH / 4), y: Math.floor(GRID_HEIGHT / 4) },
     score: 0,
@@ -39,9 +78,9 @@ let gameState = {
 // Session management
 let sessionManager = {
     currentSession: null,
-    connections: new Map(),
     isDesktop: true,
-    connectedSession: null
+    connectedSession: null,
+    firebaseConnected: false
 };
 
 // Canvas and game elements
@@ -50,8 +89,10 @@ let gameLoop;
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing app...');
     detectDevice();
-    initializeApp();
+    // Wait a bit for libraries to load
+    setTimeout(initializeApp, 1000);
 });
 
 function detectDevice() {
@@ -60,12 +101,15 @@ function detectDevice() {
     
     console.log('Device detected:', sessionManager.isDesktop ? 'Desktop' : 'Mobile', 'Width:', window.innerWidth);
     
+    const desktopView = document.getElementById('desktop-view');
+    const mobileView = document.getElementById('mobile-view');
+    
     if (sessionManager.isDesktop) {
-        document.getElementById('desktop-view').style.display = 'block';
-        document.getElementById('mobile-view').style.display = 'none';
+        if (desktopView) desktopView.style.display = 'block';
+        if (mobileView) mobileView.style.display = 'none';
     } else {
-        document.getElementById('desktop-view').style.display = 'none';
-        document.getElementById('mobile-view').style.display = 'block';
+        if (desktopView) desktopView.style.display = 'none';
+        if (mobileView) mobileView.style.display = 'block';
     }
 }
 
@@ -79,514 +123,169 @@ function initializeApp() {
 
 // Desktop Game Functions
 function initializeDesktopGame() {
-    canvas = document.getElementById('game-canvas');
-    ctx = canvas.getContext('2d');
+    console.log('Initializing desktop game...');
     
-    // Set canvas size explicitly
+    canvas = document.getElementById('game-canvas');
+    if (!canvas) {
+        console.error('Game canvas not found!');
+        return;
+    }
+    
+    ctx = canvas.getContext('2d');
     canvas.width = gameConfig.boardSize.width;
     canvas.height = gameConfig.boardSize.height;
     
     console.log('Canvas initialized:', canvas.width, 'x', canvas.height);
-    console.log('Grid dimensions:', GRID_WIDTH, 'x', GRID_HEIGHT);
     
-    // Generate session code
+    // Generate session code and setup Firebase
     generateNewSession();
     
     // Setup event listeners
-    document.getElementById('restart-btn').addEventListener('click', restartGame);
+    const restartBtn = document.getElementById('restart-btn');
+    if (restartBtn) {
+        restartBtn.addEventListener('click', restartGame);
+    }
     
-    // Setup keyboard controls
+    // Setup keyboard controls as fallback
     document.addEventListener('keydown', handleKeyPress);
     
-    // Start the game immediately
-    setTimeout(startGame, 100);
-    
-    // Simulate checking for mobile connections
-    setInterval(checkForMobileConnections, 500);
-}
-
-/// Generate and store session in Firebase
-function generateNewSession() {
-    const sessionCode = generateSessionCode();
-    const sessionRef = ref(database, `sessions/${sessionCode}`);
-    
-    set(sessionRef, {
-        created: Date.now(),
-        connected: false,
-        lastDirection: null
-    });
-    
-    sessionManager.currentSession = sessionCode;
-    document.getElementById('session-code').textContent = sessionCode;
-    generateQRCode(sessionCode);
-    
-    // Listen for mobile connections
-    onValue(sessionRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data && data.lastDirection) {
-            handleDirectionChange(data.lastDirection);
-        }
-    });
-}
-
-// Handle mobile input
-function sendDirectionToFirebase(sessionCode, direction) {
-    const sessionRef = ref(database, `sessions/${sessionCode}`);
-    set(sessionRef, {
-        connected: true,
-        lastDirection: direction,
-        timestamp: Date.now()
-    });
-}
-
-
-function generateQRCode(code) {
-    const qrCanvas = document.getElementById('qr-code');
-    const baseUrl = window.location.origin + window.location.pathname;
-    const connectUrl = `${baseUrl}?connect=${code}`;
-    
-    console.log('Generating QR code for:', connectUrl);
-    
-    // Check if QRCode library is available
-    if (typeof QRCode === 'undefined') {
-        console.error('QRCode library not loaded');
-        // Fallback: show text
-        qrCanvas.style.display = 'none';
-        const textNode = document.createElement('div');
-        textNode.textContent = 'QR Code URL: ' + connectUrl;
-        textNode.style.fontSize = '12px';
-        textNode.style.wordBreak = 'break-all';
-        textNode.style.padding = '10px';
-        textNode.style.background = 'white';
-        textNode.style.color = 'black';
-        textNode.style.borderRadius = '8px';
-        qrCanvas.parentNode.appendChild(textNode);
-        return;
-    }
-    
-    QRCode.toCanvas(qrCanvas, connectUrl, {
-        width: 150,
-        margin: 2,
-        color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-        }
-    }, function(error) {
-        if (error) {
-            console.error('QR Code generation failed:', error);
-        } else {
-            console.log('QR Code generated successfully');
-        }
-    });
-}
-
-function startGame() {
-    resetGameState();
-    gameState.gameRunning = true;
-    gameState.lastUpdateTime = Date.now();
-    document.getElementById('game-over').classList.add('hidden');
-    
-    console.log('Game started');
-    console.log('Initial snake position:', gameState.snake[0]);
-    console.log('Initial food position:', gameState.food);
-    
-    // Clear any existing game loop
-    if (gameLoop) {
-        clearInterval(gameLoop);
-    }
-    
-    // Start game loop
-    gameLoop = setInterval(() => {
-        if (gameState.gameRunning) {
-            updateGame();
-            draw();
-        }
-    }, gameState.speed);
-    
-    // Initial draw
-    draw();
-}
-
-function resetGameState() {
-    // Place snake in center of grid
-    const centerX = Math.floor(GRID_WIDTH / 2);
-    const centerY = Math.floor(GRID_HEIGHT / 2);
-    
-    gameState.snake = [{ x: centerX, y: centerY }];
-    gameState.direction = { x: 0, y: 0 }; // Start stationary
-    gameState.nextDirection = { x: 0, y: 0 };
-    gameState.food = generateRandomFood();
-    gameState.score = 0;
-    gameState.speed = gameConfig.initialSpeed;
-    gameState.lastUpdateTime = Date.now();
-    updateScore();
-    
-    console.log('Game state reset');
-    console.log('Snake position:', gameState.snake[0]);
-    console.log('Grid boundaries: 0-' + (GRID_WIDTH-1) + ', 0-' + (GRID_HEIGHT-1));
-}
-
-function updateGame() {
-    if (!gameState.gameRunning) return;
-    
-    // Only move if there's a direction set
-    if (gameState.direction.x === 0 && gameState.direction.y === 0) {
-        return;
-    }
-    
-    // Update direction from next direction
-    if (gameState.nextDirection.x !== 0 || gameState.nextDirection.y !== 0) {
-        gameState.direction = { ...gameState.nextDirection };
-        gameState.nextDirection = { x: 0, y: 0 };
-    }
-    
-    moveSnake();
-    
-    if (checkCollision()) {
-        endGame();
-        return;
-    }
-    
-    if (checkFoodCollision()) {
-        eatFood();
-    }
-}
-
-function moveSnake() {
-    const head = { ...gameState.snake[0] };
-    head.x += gameState.direction.x;
-    head.y += gameState.direction.y;
-    
-    gameState.snake.unshift(head);
-    
-    // Only remove tail if no food was eaten
-    if (!checkFoodCollision()) {
-        gameState.snake.pop();
-    }
-}
-
-function checkCollision() {
-    const head = gameState.snake[0];
-    
-    // Wall collision - check against grid boundaries
-    if (head.x < 0 || head.x >= GRID_WIDTH || head.y < 0 || head.y >= GRID_HEIGHT) {
-        console.log('Wall collision detected at:', head, 'Grid size:', GRID_WIDTH, 'x', GRID_HEIGHT);
-        return true;
-    }
-    
-    // Self collision - only check if snake is longer than 1 segment
-    if (gameState.snake.length > 1) {
-        for (let i = 1; i < gameState.snake.length; i++) {
-            if (head.x === gameState.snake[i].x && head.y === gameState.snake[i].y) {
-                console.log('Self collision detected');
-                return true;
-            }
-        }
-    }
-    
-    return false;
-}
-
-function checkFoodCollision() {
-    const head = gameState.snake[0];
-    return head.x === gameState.food.x && head.y === gameState.food.y;
-}
-
-function eatFood() {
-    gameState.score += 10;
-    updateScore();
-    
-    console.log('Food eaten, score:', gameState.score);
-    
-    // Generate new food
-    gameState.food = generateRandomFood();
-    
-    // Increase speed slightly
-    if (gameState.speed > gameConfig.minSpeed) {
-        gameState.speed = Math.max(gameState.speed - gameConfig.speedIncrease, gameConfig.minSpeed);
-        console.log('Speed increased to:', gameState.speed);
-        
-        // Restart game loop with new speed
-        clearInterval(gameLoop);
-        gameLoop = setInterval(() => {
-            if (gameState.gameRunning) {
-                updateGame();
-                draw();
-            }
-        }, gameState.speed);
-    }
-}
-
-function generateRandomFood() {
-    let food;
-    let attempts = 0;
-    do {
-        food = {
-            x: Math.floor(Math.random() * GRID_WIDTH),
-            y: Math.floor(Math.random() * GRID_HEIGHT)
-        };
-        attempts++;
-    } while (gameState.snake.some(segment => segment.x === food.x && segment.y === food.y) && attempts < 100);
-    
-    console.log('New food generated at:', food);
-    return food;
-}
-
-function draw() {
-    if (!ctx) return;
-    
-    // Clear canvas with background color
-    ctx.fillStyle = colors.background;
-    ctx.fillRect(0, 0, gameConfig.boardSize.width, gameConfig.boardSize.height);
-    
-    // Draw grid lines (subtle)
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < gameConfig.boardSize.width; x += gameConfig.gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, gameConfig.boardSize.height);
-        ctx.stroke();
-    }
-    for (let y = 0; y < gameConfig.boardSize.height; y += gameConfig.gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(gameConfig.boardSize.width, y);
-        ctx.stroke();
-    }
-    
-    // Draw snake
-    gameState.snake.forEach((segment, index) => {
-        const x = segment.x * gameConfig.gridSize;
-        const y = segment.y * gameConfig.gridSize;
-        
-        if (index === 0) {
-            // Head - brighter green with glow
-            ctx.fillStyle = '#44ff44';
-            ctx.shadowColor = colors.snake;
-            ctx.shadowBlur = 10;
-            ctx.fillRect(x + 1, y + 1, gameConfig.gridSize - 2, gameConfig.gridSize - 2);
-        } else {
-            // Body - normal green
-            ctx.fillStyle = colors.snake;
-            ctx.shadowColor = colors.snake;
-            ctx.shadowBlur = 5;
-            ctx.fillRect(x + 2, y + 2, gameConfig.gridSize - 4, gameConfig.gridSize - 4);
-        }
-    });
-    
-    // Draw food
-    ctx.fillStyle = colors.food;
-    ctx.shadowColor = colors.food;
-    ctx.shadowBlur = 15;
-    
-    const foodX = gameState.food.x * gameConfig.gridSize;
-    const foodY = gameState.food.y * gameConfig.gridSize;
-    
-    ctx.beginPath();
-    ctx.arc(
-        foodX + gameConfig.gridSize / 2,
-        foodY + gameConfig.gridSize / 2,
-        (gameConfig.gridSize / 2) - 3,
-        0,
-        2 * Math.PI
-    );
-    ctx.fill();
-    
-    // Reset shadow
-    ctx.shadowBlur = 0;
-    ctx.shadowColor = 'transparent';
-}
-
-function endGame() {
-    gameState.gameRunning = false;
-    clearInterval(gameLoop);
-    console.log('Game ended with score:', gameState.score);
-    
-    document.getElementById('final-score').textContent = gameState.score;
-    document.getElementById('game-over').classList.remove('hidden');
-}
-
-function restartGame() {
-    console.log('Restarting game');
+    // Start game
     startGame();
 }
 
-function updateScore() {
-    document.getElementById('score').textContent = gameState.score;
-}
-
-function handleKeyPress(event) {
-    if (!gameState.gameRunning) {
-        if (event.key === ' ' || event.key === 'Enter') {
-            if (!gameState.gameRunning) {
-                startGame();
-            }
-        }
-        return;
+function generateNewSession() {
+    // Generate random 6-digit numeric code
+    const sessionCode = Math.floor(100000 + Math.random() * 900000).toString();
+    sessionManager.currentSession = sessionCode;
+    
+    console.log('Generated session code:', sessionCode);
+    
+    // Update UI
+    const sessionCodeElement = document.getElementById('session-code');
+    if (sessionCodeElement) {
+        sessionCodeElement.textContent = sessionCode;
     }
     
-    const key = event.key;
-    let newDirection = null;
+    generateQRCode(sessionCode);
+    updateConnectionStatus('Waiting for mobile connection...');
     
-    switch (key) {
-        case 'ArrowUp':
-        case 'w':
-        case 'W':
-            if (gameState.direction.y === 0) { // Not moving vertically
-                newDirection = { x: 0, y: -1 };
-            }
-            break;
-        case 'ArrowDown':
-        case 's':
-        case 'S':
-            if (gameState.direction.y === 0) { // Not moving vertically
-                newDirection = { x: 0, y: 1 };
-            }
-            break;
-        case 'ArrowLeft':
-        case 'a':
-        case 'A':
-            if (gameState.direction.x === 0) { // Not moving horizontally
-                newDirection = { x: -1, y: 0 };
-            }
-            break;
-        case 'ArrowRight':
-        case 'd':
-        case 'D':
-            if (gameState.direction.x === 0) { // Not moving horizontally
-                newDirection = { x: 1, y: 0 };
-            }
-            break;
-    }
-    
-    if (newDirection) {
-        changeDirection(newDirection);
-    }
-    
-    event.preventDefault();
-}
-
-function changeDirection(newDirection) {
-    // Prevent reversing into self
-    if (newDirection.x === -gameState.direction.x && newDirection.y === -gameState.direction.y) {
-        return;
-    }
-    
-    // If currently stationary, apply direction immediately
-    if (gameState.direction.x === 0 && gameState.direction.y === 0) {
-        gameState.direction = newDirection;
+    // Setup Firebase or fallback to localStorage
+    if (firebaseReady && database) {
+        setupFirebaseSession(sessionCode);
     } else {
-        gameState.nextDirection = newDirection;
+        setupLocalStorageSession(sessionCode);
     }
-    
-    console.log('Direction changed to:', newDirection);
 }
 
-// Mobile Controller Functions
-function initializeMobileController() {
-    console.log('Initializing mobile controller');
-    
-    // Check URL for connection code
-    const urlParams = new URLSearchParams(window.location.search);
-    const connectCode = urlParams.get('connect');
-    
-    if (connectCode) {
-        document.getElementById('code-input').value = connectCode.toUpperCase();
-        setTimeout(() => connectToSession(), 500);
-    }
-    
-    // Setup event listeners
-    document.getElementById('connect-btn').addEventListener('click', connectToSession);
-    document.getElementById('code-input').addEventListener('input', handleCodeInput);
-    document.getElementById('code-input').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            connectToSession();
-        }
-    });
-    
-    // Direction buttons
-    const directionBtns = document.querySelectorAll('.direction-btn');
-    directionBtns.forEach(btn => {
-        // Add both touch and click events
-        btn.addEventListener('touchstart', handleDirectionPress, { passive: false });
-        btn.addEventListener('click', handleDirectionPress);
+async function setupFirebaseSession(sessionCode) {
+    try {
+        const sessionRef = database.ref(`sessions/${sessionCode}`);
         
-        // Prevent context menu on long press
-        btn.addEventListener('contextmenu', e => e.preventDefault());
-    });
+        await sessionRef.set({
+            created: Date.now(),
+            connected: false,
+            lastDirection: null,
+            gameState: {
+                active: true,
+                score: 0
+            }
+        });
+        
+        console.log('Session created in Firebase:', sessionCode);
+        sessionManager.firebaseConnected = true;
+        updateConnectionStatus('Firebase connected - Waiting for mobile...');
+        
+        // Listen for mobile controller input
+        sessionRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data && data.lastDirection && data.connected) {
+                console.log('Received direction from Firebase:', data.lastDirection);
+                handleDirectionFromMobile(data.lastDirection);
+                updateConnectionStatus('Mobile connected via Firebase');
+            }
+        });
+        
+    } catch (error) {
+        console.error('Firebase error:', error);
+        updateConnectionStatus('Firebase failed, using local mode');
+        setupLocalStorageSession(sessionCode);
+    }
 }
 
-function handleCodeInput(event) {
-    const input = event.target;
-    input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-}
-
-function connectToSession(sessionCode) {
-    const sessionRef = ref(database, `sessions/${sessionCode}`);
+function setupLocalStorageSession(sessionCode) {
+    console.log('Using localStorage for session:', sessionCode);
+    localStorage.setItem('currentSession', sessionCode);
+    updateConnectionStatus('Local mode - Waiting for mobile...');
     
-    // Check if session exists
-    onValue(sessionRef, (snapshot) => {
-        if (snapshot.exists()) {
-            sessionManager.connectedSession = sessionCode;
-            showConnectionSuccess();
-        } else {
-            showConnectionError();
+    // Listen for localStorage changes (cross-tab communication)
+    window.addEventListener('storage', function(e) {
+        if (e.key === `session_${sessionCode}`) {
+            const data = JSON.parse(e.newValue || '{}');
+            if (data.direction) {
+                console.log('Received direction from localStorage:', data.direction);
+                handleDirectionFromMobile(data.direction);
+                updateConnectionStatus('Mobile connected via localStorage');
+            }
         }
     });
 }
 
-function sendDirection(direction) {
-    if (sessionManager.connectedSession) {
-        sendDirectionToFirebase(sessionManager.connectedSession, direction);
+function generateQRCode(sessionCode) {
+    console.log('Generating QR code for session:', sessionCode);
+    
+    const qrCanvas = document.getElementById('qr-code');
+    if (!qrCanvas) {
+        console.error('QR canvas not found!');
+        return;
     }
-}
-
-function showControllerInterface() {
-    document.getElementById('controller-interface').classList.remove('hidden');
-}
-
-function updateMobileConnectionStatus(message, connected) {
-    const statusText = document.getElementById('mobile-connection-text');
-    const statusDot = document.querySelector('#mobile-connection-status .status-dot');
     
-    statusText.textContent = message;
+    const gameUrl = `${window.location.origin}${window.location.pathname}?session=${sessionCode}`;
+    console.log('QR URL:', gameUrl);
     
-    if (connected) {
-        statusDot.classList.add('connected');
+    // Check if QRCode library is loaded
+    if (typeof QRCode !== 'undefined') {
+        try {
+            QRCode.toCanvas(qrCanvas, gameUrl, {
+                width: 150,
+                margin: 2,
+                color: {
+                    dark: '#00ffff',
+                    light: '#ffffff'
+                }
+            }, function(error) {
+                if (error) {
+                    console.error('QR Code generation error:', error);
+                    drawPlaceholderQR(qrCanvas, sessionCode);
+                } else {
+                    console.log('QR code generated successfully');
+                }
+            });
+        } catch (error) {
+            console.error('QRCode execution error:', error);
+            drawPlaceholderQR(qrCanvas, sessionCode);
+        }
     } else {
-        statusDot.classList.remove('connected');
+        console.warn('QRCode library not loaded, drawing placeholder');
+        drawPlaceholderQR(qrCanvas, sessionCode);
     }
 }
 
-function handleDirectionPress(event) {
-    event.preventDefault();
-    
-    if (!sessionManager.connectedSession) return;
-    
-    const button = event.currentTarget;
-    const direction = button.getAttribute('data-direction');
-    
-    if (direction) {
-        sendDirectionToDesktop(direction);
-        animateButtonPress(button);
-        console.log('Direction pressed:', direction);
-    }
+function drawPlaceholderQR(canvas, sessionCode) {
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0, 0, 150, 150);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('QR Code', 75, 60);
+    ctx.fillText('Placeholder', 75, 80);
+    ctx.font = '12px Arial';
+    ctx.fillText(`Code: ${sessionCode}`, 75, 110);
 }
 
-function animateButtonPress(button) {
-    button.style.transform = 'scale(0.85)';
-    button.style.background = 'rgba(0, 255, 255, 0.4)';
-    button.style.boxShadow = '0 0 30px rgba(0, 255, 255, 0.6)';
+function handleDirectionFromMobile(direction) {
+    console.log('Handling direction from mobile:', direction);
     
-    setTimeout(() => {
-        button.style.transform = '';
-        button.style.background = '';
-        button.style.boxShadow = '';
-    }, 150);
-}
-
-function sendDirectionToDesktop(direction) {
     const directionMap = {
         'up': { x: 0, y: -1 },
         'down': { x: 0, y: 1 },
@@ -595,88 +294,381 @@ function sendDirectionToDesktop(direction) {
     };
     
     const newDirection = directionMap[direction];
-    
-    if (newDirection) {
-        // Store direction in session for cross-device communication simulation
-        simulateDirectionMessage(sessionManager.connectedSession, newDirection);
-    }
-}
-
-// Cross-device communication simulation
-function simulateDirectionMessage(sessionCode, direction) {
-    if (sessionManager.connections.has(sessionCode)) {
-        const session = sessionManager.connections.get(sessionCode);
-        session.lastDirection = direction;
-        session.lastDirectionTime = Date.now();
-        console.log('Direction sent to session:', sessionCode, direction);
-    }
-}
-
-function checkForMobileConnections() {
-    if (!sessionManager.currentSession) return;
-    
-    const session = sessionManager.connections.get(sessionManager.currentSession.code);
-    if (!session) return;
-    
-    // Check connection status
-    const isConnected = session.connectedDevices && session.connectedDevices.length > 0;
-    updateDesktopConnectionStatus(isConnected);
-    
-    // Check for direction commands from mobile
-    if (session.lastDirection && session.lastDirectionTime) {
-        const timeDiff = Date.now() - session.lastDirectionTime;
-        
-        // Process direction if it's recent (within 500ms)
-        if (timeDiff < 500) {
-            changeDirection(session.lastDirection);
-            session.lastDirection = null; // Clear after processing
+    if (newDirection && gameState.gameRunning) {
+        // Prevent reverse direction
+        if (gameState.direction.x !== -newDirection.x || gameState.direction.y !== -newDirection.y) {
+            gameState.nextDirection = newDirection;
         }
     }
 }
 
-function updateDesktopConnectionStatus(connected) {
-    const statusText = document.getElementById('connection-text');
-    const statusDot = document.querySelector('#connection-indicator .status-dot');
+function handleKeyPress(event) {
+    if (!gameState.gameRunning) return;
     
-    if (connected) {
-        statusText.textContent = 'Mobile controller connected!';
-        statusDot.classList.add('connected');
-    } else {
-        statusText.textContent = 'Waiting for connection...';
-        statusDot.classList.remove('connected');
+    const keyDirections = {
+        'ArrowUp': { x: 0, y: -1 },
+        'ArrowDown': { x: 0, y: 1 },
+        'ArrowLeft': { x: -1, y: 0 },
+        'ArrowRight': { x: 1, y: 0 }
+    };
+    
+    const newDirection = keyDirections[event.key];
+    if (newDirection) {
+        event.preventDefault();
+        if (gameState.direction.x !== -newDirection.x || gameState.direction.y !== -newDirection.y) {
+            gameState.nextDirection = newDirection;
+        }
     }
 }
 
-// Handle window resize
-window.addEventListener('resize', function() {
-    const wasDesktop = sessionManager.isDesktop;
-    detectDevice();
+function startGame() {
+    console.log('Starting game...');
+    gameState.gameRunning = true;
+    gameState.lastUpdateTime = performance.now();
     
-    if (wasDesktop !== sessionManager.isDesktop) {
-        location.reload();
+    const gameOverScreen = document.getElementById('game-over');
+    if (gameOverScreen) {
+        gameOverScreen.classList.add('hidden');
     }
-});
+    
+    generateFood();
+    gameLoop = requestAnimationFrame(updateGame);
+    renderGame();
+}
 
-// Prevent zoom on double tap (mobile)
-let lastTouchEnd = 0;
-document.addEventListener('touchend', function(event) {
-    const now = (new Date()).getTime();
-    if (now - lastTouchEnd <= 300) {
-        event.preventDefault();
+function updateGame(currentTime) {
+    if (!gameState.gameRunning) return;
+    
+    const deltaTime = currentTime - gameState.lastUpdateTime;
+    
+    if (deltaTime >= gameState.speed) {
+        if (gameState.nextDirection.x !== 0 || gameState.nextDirection.y !== 0) {
+            gameState.direction = { ...gameState.nextDirection };
+        }
+        
+        if (gameState.direction.x !== 0 || gameState.direction.y !== 0) {
+            moveSnake();
+        }
+        
+        gameState.lastUpdateTime = currentTime;
     }
-    lastTouchEnd = now;
-}, false);
+    
+    renderGame();
+    
+    if (gameState.gameRunning) {
+        gameLoop = requestAnimationFrame(updateGame);
+    }
+}
 
-// Prevent pull-to-refresh
-document.addEventListener('touchstart', function(e) {
-    if (e.touches.length > 1) {
-        e.preventDefault();
+function moveSnake() {
+    const head = { ...gameState.snake[0] };
+    head.x += gameState.direction.x;
+    head.y += gameState.direction.y;
+    
+    // Check wall collision
+    if (head.x < 0 || head.x >= GRID_WIDTH || head.y < 0 || head.y >= GRID_HEIGHT) {
+        gameOver();
+        return;
     }
-});
+    
+    // Check self collision
+    for (let segment of gameState.snake) {
+        if (head.x === segment.x && head.y === segment.y) {
+            gameOver();
+            return;
+        }
+    }
+    
+    gameState.snake.unshift(head);
+    
+    // Check food collision
+    if (head.x === gameState.food.x && head.y === gameState.food.y) {
+        gameState.score += 10;
+        updateScore();
+        generateFood();
+        
+        if (gameState.speed > gameConfig.minSpeed) {
+            gameState.speed = Math.max(gameConfig.minSpeed, gameState.speed - gameConfig.speedIncrease);
+        }
+    } else {
+        gameState.snake.pop();
+    }
+}
 
-document.addEventListener('touchmove', function(e) {
-    if (e.target.closest('.direction-btn') || e.target.closest('#code-input')) {
-        return; // Allow touch on interactive elements
+function generateFood() {
+    let foodPosition;
+    do {
+        foodPosition = {
+            x: Math.floor(Math.random() * GRID_WIDTH),
+            y: Math.floor(Math.random() * GRID_HEIGHT)
+        };
+    } while (gameState.snake.some(segment => segment.x === foodPosition.x && segment.y === foodPosition.y));
+    
+    gameState.food = foodPosition;
+}
+
+function renderGame() {
+    if (!ctx) return;
+    
+    // Clear canvas
+    ctx.fillStyle = colors.background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw snake
+    ctx.fillStyle = colors.snake;
+    for (let segment of gameState.snake) {
+        ctx.fillRect(
+            segment.x * gameConfig.gridSize + 1,
+            segment.y * gameConfig.gridSize + 1,
+            gameConfig.gridSize - 2,
+            gameConfig.gridSize - 2
+        );
     }
-    e.preventDefault();
-}, { passive: false });
+    
+    // Draw food
+    ctx.fillStyle = colors.food;
+    ctx.fillRect(
+        gameState.food.x * gameConfig.gridSize + 1,
+        gameState.food.y * gameConfig.gridSize + 1,
+        gameConfig.gridSize - 2,
+        gameConfig.gridSize - 2
+    );
+}
+
+function updateScore() {
+    const scoreElement = document.getElementById('score');
+    if (scoreElement) {
+        scoreElement.textContent = gameState.score.toString();
+    }
+}
+
+function updateConnectionStatus(status) {
+    const statusElement = document.getElementById('connection-status');
+    if (statusElement) {
+        statusElement.textContent = status;
+    }
+}
+
+function gameOver() {
+    console.log('Game over! Final score:', gameState.score);
+    gameState.gameRunning = false;
+    
+    const finalScoreElement = document.getElementById('final-score');
+    if (finalScoreElement) {
+        finalScoreElement.textContent = gameState.score.toString();
+    }
+    
+    const gameOverScreen = document.getElementById('game-over');
+    if (gameOverScreen) {
+        gameOverScreen.classList.remove('hidden');
+    }
+}
+
+function restartGame() {
+    console.log('Restarting game...');
+    
+    gameState = {
+        snake: [{ x: Math.floor(GRID_WIDTH / 2), y: Math.floor(GRID_HEIGHT / 2) }],
+        direction: { x: 0, y: 0 },
+        nextDirection: { x: 0, y: 0 },
+        food: { x: Math.floor(GRID_WIDTH / 4), y: Math.floor(GRID_HEIGHT / 4) },
+        score: 0,
+        gameRunning: false,
+        speed: gameConfig.initialSpeed,
+        lastUpdateTime: 0
+    };
+    
+    updateScore();
+    startGame();
+}
+
+// Mobile Controller Functions
+function initializeMobileController() {
+    console.log('Initializing mobile controller...');
+    
+    // Check for session code in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionFromUrl = urlParams.get('session');
+    
+    if (sessionFromUrl) {
+        const sessionInput = document.getElementById('session-input');
+        if (sessionInput) {
+            sessionInput.value = sessionFromUrl;
+            // Auto-connect after a short delay
+            setTimeout(() => connectToSession(sessionFromUrl), 1000);
+        }
+    }
+    
+    setupMobileEventListeners();
+}
+
+function setupMobileEventListeners() {
+    const connectBtn = document.getElementById('connect-btn');
+    if (connectBtn) {
+        connectBtn.addEventListener('click', function() {
+            const sessionInput = document.getElementById('session-input');
+            if (sessionInput) {
+                const sessionCode = sessionInput.value.trim();
+                if (sessionCode.length === 6 && /^\d+$/.test(sessionCode)) {
+                    connectToSession(sessionCode);
+                } else {
+                    showConnectionError('Please enter a valid 6-digit code');
+                }
+            }
+        });
+    }
+    
+    const scanBtn = document.getElementById('scan-btn');
+    if (scanBtn) {
+        scanBtn.addEventListener('click', simulateQRScan);
+    }
+    
+    // Direction buttons
+    const directions = ['up', 'down', 'left', 'right'];
+    directions.forEach(direction => {
+        const btn = document.getElementById(`btn-${direction}`);
+        if (btn) {
+            btn.addEventListener('click', () => sendDirection(direction));
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                sendDirection(direction);
+                btn.classList.add('active');
+            });
+            btn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                btn.classList.remove('active');
+            });
+        }
+    });
+}
+
+function connectToSession(sessionCode) {
+    console.log('Attempting to connect to session:', sessionCode);
+    
+    if (firebaseReady && database) {
+        connectViaFirebase(sessionCode);
+    } else {
+        connectViaLocalStorage(sessionCode);
+    }
+}
+
+async function connectViaFirebase(sessionCode) {
+    try {
+        const sessionRef = database.ref(`sessions/${sessionCode}`);
+        
+        sessionRef.once('value', (snapshot) => {
+            if (snapshot.exists()) {
+                sessionManager.connectedSession = sessionCode;
+                showControllerInterface();
+                showConnectionSuccess();
+                console.log('Connected to Firebase session:', sessionCode);
+            } else {
+                showConnectionError('Session not found. Make sure the game is running on desktop.');
+            }
+        });
+        
+    } catch (error) {
+        console.error('Firebase connection error:', error);
+        connectViaLocalStorage(sessionCode);
+    }
+}
+
+function connectViaLocalStorage(sessionCode) {
+    const currentSession = localStorage.getItem('currentSession');
+    
+    if (currentSession === sessionCode) {
+        sessionManager.connectedSession = sessionCode;
+        showControllerInterface();
+        showConnectionSuccess();
+        console.log('Connected to localStorage session:', sessionCode);
+    } else {
+        showConnectionError('Session not found. Make sure the game is running on desktop.');
+    }
+}
+
+function showControllerInterface() {
+    console.log('Showing controller interface');
+    
+    const connectionForm = document.getElementById('connection-form');
+    const controllerInterface = document.getElementById('controller-interface');
+    
+    if (connectionForm) connectionForm.style.display = 'none';
+    if (controllerInterface) controllerInterface.style.display = 'block';
+}
+
+function showConnectionSuccess() {
+    const statusElement = document.getElementById('mobile-connection-status');
+    if (statusElement) {
+        statusElement.textContent = 'Connected successfully!';
+        statusElement.style.color = '#00ff00';
+    }
+}
+
+function showConnectionError(message) {
+    const statusElement = document.getElementById('mobile-connection-status');
+    if (statusElement) {
+        statusElement.textContent = message;
+        statusElement.style.color = '#ff0000';
+    }
+}
+
+function sendDirection(direction) {
+    if (!sessionManager.connectedSession) {
+        console.error('No connected session');
+        return;
+    }
+    
+    console.log('Sending direction:', direction);
+    
+    if (firebaseReady && database) {
+        sendDirectionFirebase(direction);
+    } else {
+        sendDirectionLocalStorage(direction);
+    }
+    
+    // Visual feedback
+    const btn = document.getElementById(`btn-${direction}`);
+    if (btn) {
+        btn.classList.add('pressed');
+        setTimeout(() => btn.classList.remove('pressed'), 150);
+    }
+}
+
+async function sendDirectionFirebase(direction) {
+    try {
+        const sessionRef = database.ref(`sessions/${sessionManager.connectedSession}`);
+        await sessionRef.update({
+            connected: true,
+            lastDirection: direction,
+            timestamp: Date.now()
+        });
+        console.log('Direction sent via Firebase:', direction);
+    } catch (error) {
+        console.error('Error sending direction to Firebase:', error);
+        // Fallback to localStorage
+        sendDirectionLocalStorage(direction);
+    }
+}
+
+function sendDirectionLocalStorage(direction) {
+    const sessionData = {
+        direction: direction,
+        timestamp: Date.now()
+    };
+    
+    localStorage.setItem(`session_${sessionManager.connectedSession}`, JSON.stringify(sessionData));
+    console.log('Direction sent via localStorage:', direction);
+}
+
+function simulateQRScan() {
+    const sessionCode = prompt('Enter session code (simulated QR scan):');
+    if (sessionCode && sessionCode.length === 6 && /^\d+$/.test(sessionCode)) {
+        const sessionInput = document.getElementById('session-input');
+        if (sessionInput) {
+            sessionInput.value = sessionCode;
+            connectToSession(sessionCode);
+        }
+    } else {
+        showConnectionError('Invalid session code format');
+    }
+}
