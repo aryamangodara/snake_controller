@@ -20,30 +20,49 @@
 <body>
     <!-- Desktop Game View -->
     <div id="desktop-view" class="desktop-view">
-        <div class="game-container">
-            <div class="game-header">
-                <h1 class="game-title">Snake Game</h1>
-                <div class="score-display">
-                    <span class="score-label">Score:</span>
-                    <span id="score" class="score-value">0</span>
+        <div class="desktop-container">
+            <!-- Top Header -->
+            <div class="top-header">
+                <div class="title-section">
+                    <h1 class="game-title">Snake Game</h1>
+                    <p class="creator-text">by Aryaman Godara</p>
+                </div>
+                <div class="social-section">
+                    <a href="https://www.linkedin.com/in/aryamangodara/" target="_blank" class="social-link linkedin">
+                        <i class="fab fa-linkedin"></i>
+                    </a>
+                    <a href="https://www.instagram.com/aryaman_godara/" target="_blank" class="social-link instagram">
+                        <i class="fab fa-instagram"></i>
+                    </a>
                 </div>
             </div>
-            
-            <div class="game-content">
+
+            <!-- Main Game Area -->
+            <div class="game-area">
                 <div class="game-board-container">
                     <canvas id="game-canvas" width="600" height="600"></canvas>
                     <div id="game-over" class="game-over hidden">
                         <div class="game-over-content">
                             <h2>Game Over!</h2>
-                            <p class="final-score">Final Score: <span id="final-score">0</span></p>
-                            <button id="restart-btn" class="btn btn-primary">Play Again</button>
+                            <div class="score-display">
+                                <span class="score-label">Final Score:</span>
+                                <span id="final-score" class="score-value">0</span>
+                            </div>
+                            <p class="restart-prompt">Use your phone controller to play again</p>
                         </div>
                     </div>
                 </div>
                 
-                <div class="session-info">
-                    <div class="session-card">
-                        <h3>Connect Your Phone</h3>
+                <div class="control-panel">
+                    <div class="score-card">
+                        <div class="current-score">
+                            <span class="score-label">Score:</span>
+                            <span id="score" class="score-value">0</span>
+                        </div>
+                    </div>
+
+                    <div class="connection-card">
+                        <h3>Mobile Controller</h3>
                         <div class="session-code">
                             <span class="code-label">Session Code:</span>
                             <span id="session-code" class="code-value">123456</span>
@@ -58,28 +77,8 @@
                                 <p>Generating QR Code...</p>
                             </div>
                         </div>
-                        <div class="connection-status">
-                            <span id="connection-status">Generating session...</span>
-                        </div>
-                        <div class="instructions">
-                            <p>1. Open this site on your phone</p>
-                            <p>2. Enter the code or scan QR</p>
-                            <p>3. Use your phone as controller</p>
-                        </div>
+                        <div id="connection-status" class="connection-status">Generating session...</div>
                     </div>
-                </div>
-            </div>
-            
-            <!-- Creator Credits - Desktop -->
-            <div class="credits">
-                <span class="credits-text">Created by Aryaman Godara</span>
-                <div class="social-links">
-                    <a href="https://www.linkedin.com/in/aryamangodara/" target="_blank" class="social-link linkedin">
-                        <i class="fab fa-linkedin"></i>
-                    </a>
-                    <a href="https://www.instagram.com/aryaman_godara/" target="_blank" class="social-link instagram">
-                        <i class="fab fa-instagram"></i>
-                    </a>
                 </div>
             </div>
         </div>
@@ -95,27 +94,16 @@
             <!-- Connection Form -->
             <div id="connection-form" class="connection-form">
                 <div class="input-group">
-                    <label for="session-input">Enter 6-digit code:</label>
+                    <label for="session-input">Enter 6-digit session code:</label>
                     <input type="text" id="session-input" maxlength="6" placeholder="123456" pattern="[0-9]{6}">
                 </div>
                 
-                <div class="button-group">
-                    <button id="connect-btn" class="btn btn-primary">Connect</button>
-                    <button id="scan-btn" class="btn btn-secondary">Scan QR</button>
-                </div>
-                
+                <button id="connect-btn" class="btn btn-connect">Connect to Game</button>
                 <div id="mobile-connection-status" class="connection-status"></div>
             </div>
             
-            <!-- Controller Interface - Remote Style -->
+            <!-- Controller Interface -->
             <div id="controller-interface" class="controller-interface">
-                <div class="connection-info">
-                    <div class="connection-indicator connected">
-                        <span class="status-dot"></span>
-                        <span>Connected to Game</span>
-                    </div>
-                </div>
-                
                 <!-- Remote-style Controller Layout -->
                 <div class="remote-controller">
                     <!-- Up Button -->
@@ -128,7 +116,7 @@
                         </button>
                     </div>
                     
-                    <!-- Middle Row - Left and Right -->
+                    <!-- Middle Row - Left, Center, Right -->
                     <div class="remote-row middle-row">
                         <button id="btn-left" class="direction-btn remote-btn left-btn">
                             <div class="btn-content">
@@ -137,9 +125,12 @@
                             </div>
                         </button>
                         
-                        <div class="center-space">
-                            <div class="center-dot"></div>
-                        </div>
+                        <button id="btn-center" class="center-btn" disabled>
+                            <div class="btn-content">
+                                <span class="center-icon">●</span>
+                                <span class="btn-label">START</span>
+                            </div>
+                        </button>
                         
                         <button id="btn-right" class="direction-btn remote-btn right-btn">
                             <div class="btn-content">
@@ -158,24 +149,6 @@
                             </div>
                         </button>
                     </div>
-                </div>
-                
-                <div class="controller-instructions">
-                    <p>Use the remote buttons to control the snake</p>
-                    <p>Score updates in real-time on the desktop</p>
-                </div>
-            </div>
-            
-            <!-- Creator Credits - Mobile -->
-            <div class="credits mobile-credits">
-                <span class="credits-text">Created by Aryaman Godara</span>
-                <div class="social-links">
-                    <a href="https://www.linkedin.com/in/aryamangodara/" target="_blank" class="social-link linkedin">
-                        <i class="fab fa-linkedin"></i>
-                    </a>
-                    <a href="https://www.instagram.com/aryaman_godara/" target="_blank" class="social-link instagram">
-                        <i class="fab fa-instagram"></i>
-                    </a>
                 </div>
             </div>
         </div>

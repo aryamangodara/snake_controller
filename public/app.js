@@ -49,21 +49,22 @@ const gameConfig = {
     minSpeed: 80
 };
 
+// Updated colors for the new synthwave aesthetic
 const colors = {
     background: "#0a0a0a",
-    snake: "#00ff00",
-    snakeHead: "#00ff00",
-    food: "#ff0000",
+    snake: "#ff1493",        // Hot pink for snake body
+    snakeHead: "#ff6b35",    // Orange for snake head  
+    food: "#7209b7",         // Purple for food
     border: "#333333",
     text: "#ffffff",
-    accent: "#00ffff"
+    accent: "#ff1493"
 };
 
 // Calculate grid dimensions
 const GRID_WIDTH = Math.floor(gameConfig.boardSize.width / gameConfig.gridSize);
 const GRID_HEIGHT = Math.floor(gameConfig.boardSize.height / gameConfig.gridSize);
 
-// Create initial snake with length of 5, positioned vertically and pointing up
+// Create initial snake with length of 5, positioned vertically
 function createInitialSnake() {
     const centerX = Math.floor(GRID_WIDTH / 2);
     const centerY = Math.floor(GRID_HEIGHT / 2);
@@ -77,16 +78,24 @@ function createInitialSnake() {
     ];
 }
 
+// Game states
+const GameState = {
+    WAITING_FOR_START: 'waiting_for_start',
+    PLAYING: 'playing',
+    GAME_OVER: 'game_over'
+};
+
 // Global game state
 let gameState = {
     snake: createInitialSnake(),
-    direction: { x: 0, y: -1 }, // Start moving upward
-    nextDirection: { x: 0, y: -1 }, // Default direction upward
+    direction: { x: 0, y: 0 }, // Start stationary
+    nextDirection: { x: 0, y: 0 },
     food: { x: Math.floor(GRID_WIDTH / 4), y: Math.floor(GRID_HEIGHT / 4) },
     score: 0,
     gameRunning: false,
     speed: gameConfig.initialSpeed,
-    lastUpdateTime: 0
+    lastUpdateTime: 0,
+    currentState: GameState.WAITING_FOR_START
 };
 
 // Session management
@@ -105,7 +114,6 @@ let gameLoop;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing app...');
     detectDevice();
-    // Wait for libraries to load
     setTimeout(initializeApp, 1000);
 });
 
@@ -154,27 +162,16 @@ function initializeDesktopGame() {
     // Generate session code and setup Firebase
     generateNewSession();
     
-    // Setup event listeners
-    const restartBtn = document.getElementById('restart-btn');
-    if (restartBtn) {
-        restartBtn.addEventListener('click', restartGame);
-    }
-    
-    // Setup keyboard controls as fallback
-    document.addEventListener('keydown', handleKeyPress);
-    
-    // Start game
-    startGame();
+    // Start game loop (but game won't move until started from mobile)
+    startGameLoop();
 }
 
 function generateNewSession() {
-    // Generate random 6-digit numeric code
     const sessionCode = Math.floor(100000 + Math.random() * 900000).toString();
     sessionManager.currentSession = sessionCode;
     
     console.log('Generated session code:', sessionCode);
     
-    // Update UI
     const sessionCodeElement = document.getElementById('session-code');
     if (sessionCodeElement) {
         sessionCodeElement.textContent = sessionCode;
@@ -183,7 +180,6 @@ function generateNewSession() {
     generateQRCode(sessionCode);
     updateConnectionStatus('Waiting for mobile connection...');
     
-    // Setup Firebase or fallback to localStorage
     if (firebaseReady && database) {
         setupFirebaseSession(sessionCode);
     } else {
@@ -199,9 +195,11 @@ async function setupFirebaseSession(sessionCode) {
             created: Date.now(),
             connected: false,
             lastDirection: null,
+            gameAction: null,
             gameState: {
                 active: true,
-                score: 0
+                score: 0,
+                state: GameState.WAITING_FOR_START
             }
         });
         
@@ -212,9 +210,15 @@ async function setupFirebaseSession(sessionCode) {
         // Listen for mobile controller input
         sessionRef.on('value', (snapshot) => {
             const data = snapshot.val();
-            if (data && data.lastDirection && data.connected) {
-                console.log('Received direction from Firebase:', data.lastDirection);
-                handleDirectionFromMobile(data.lastDirection);
+            if (data && data.connected) {
+                if (data.lastDirection) {
+                    console.log('Received direction from Firebase:', data.lastDirection);
+                    handleDirectionFromMobile(data.lastDirection);
+                }
+                if (data.gameAction) {
+                    console.log('Received game action from Firebase:', data.gameAction);
+                    handleGameActionFromMobile(data.gameAction);
+                }
                 updateConnectionStatus('Mobile connected via Firebase');
             }
         });
@@ -238,8 +242,12 @@ function setupLocalStorageSession(sessionCode) {
             if (data.direction) {
                 console.log('Received direction from localStorage:', data.direction);
                 handleDirectionFromMobile(data.direction);
-                updateConnectionStatus('Mobile connected via localStorage');
             }
+            if (data.gameAction) {
+                console.log('Received game action from localStorage:', data.gameAction);
+                handleGameActionFromMobile(data.gameAction);
+            }
+            updateConnectionStatus('Mobile connected via localStorage');
         }
     });
 }
@@ -274,8 +282,8 @@ function generateQRCode(sessionCode) {
                 element: qrCanvas,
                 value: gameUrl,
                 size: 150,
-                foreground: '#00ffff',
-                background: '#ffffff'
+                foreground: '#000000',  // Black QR code
+                background: '#ffffff'   // White background
             });
             
             qrGenerated = true;
@@ -294,15 +302,14 @@ function generateQRCode(sessionCode) {
         try {
             console.log('Trying QRCode.js library...');
             
-            // Clear the div first
             qrDiv.innerHTML = '';
             
             const qr = new QRCode(qrDiv, {
                 text: gameUrl,
                 width: 150,
                 height: 150,
-                colorDark: '#00ffff',
-                colorLight: '#ffffff'
+                colorDark: '#000000',   // Black QR code
+                colorLight: '#ffffff'  // White background
             });
             
             qrGenerated = true;
@@ -311,7 +318,6 @@ function generateQRCode(sessionCode) {
             if (qrLoading) qrLoading.style.display = 'none';
             if (qrContainer) qrContainer.style.display = 'block';
             
-            // Hide the canvas since we're using the div
             if (qrCanvas) qrCanvas.style.display = 'none';
             
         } catch (error) {
@@ -336,16 +342,16 @@ function drawPlaceholderQR(canvas, sessionCode) {
     
     const ctx = canvas.getContext('2d');
     
-    // Clear canvas
+    // Clear canvas - white background
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 150, 150);
     
-    // Draw border
-    ctx.strokeStyle = '#00ffff';
-    ctx.lineWidth = 3;
+    // Draw border - black
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
     ctx.strokeRect(5, 5, 140, 140);
     
-    // QR pattern simulation (corners)
+    // QR pattern simulation (corners) - black
     ctx.fillStyle = '#000000';
     
     // Top-left corner
@@ -369,7 +375,7 @@ function drawPlaceholderQR(canvas, sessionCode) {
     ctx.fillStyle = '#000000';
     ctx.fillRect(23, 118, 9, 9);
     
-    // Random pattern in middle
+    // Random pattern in middle - black
     ctx.fillStyle = '#000000';
     for (let i = 0; i < 20; i++) {
         const x = Math.floor(Math.random() * 100) + 25;
@@ -377,8 +383,8 @@ function drawPlaceholderQR(canvas, sessionCode) {
         ctx.fillRect(x, y, 3, 3);
     }
     
-    // Center text
-    ctx.fillStyle = '#00ffff';
+    // Center text - black
+    ctx.fillStyle = '#000000';
     ctx.font = 'bold 10px Arial';
     ctx.textAlign = 'center';
     ctx.fillText('SCAN QR', 75, 60);
@@ -398,7 +404,7 @@ function handleDirectionFromMobile(direction) {
     };
     
     const newDirection = directionMap[direction];
-    if (newDirection && gameState.gameRunning) {
+    if (newDirection && gameState.currentState === GameState.PLAYING) {
         // Prevent reverse direction
         if (gameState.direction.x !== -newDirection.x || gameState.direction.y !== -newDirection.y) {
             gameState.nextDirection = newDirection;
@@ -406,38 +412,36 @@ function handleDirectionFromMobile(direction) {
     }
 }
 
-function handleKeyPress(event) {
-    if (!gameState.gameRunning) return;
+function handleGameActionFromMobile(action) {
+    console.log('Handling game action from mobile:', action);
     
-    const keyDirections = {
-        'ArrowUp': { x: 0, y: -1 },
-        'ArrowDown': { x: 0, y: 1 },
-        'ArrowLeft': { x: -1, y: 0 },
-        'ArrowRight': { x: 1, y: 0 }
-    };
-    
-    const newDirection = keyDirections[event.key];
-    if (newDirection) {
-        event.preventDefault();
-        if (gameState.direction.x !== -newDirection.x || gameState.direction.y !== -newDirection.y) {
-            gameState.nextDirection = newDirection;
-        }
+    if (action === 'start' && gameState.currentState === GameState.WAITING_FOR_START) {
+        startGame();
+    } else if (action === 'restart' && gameState.currentState === GameState.GAME_OVER) {
+        restartGame();
     }
 }
 
-function startGame() {
-    console.log('Starting game...');
+function startGameLoop() {
+    console.log('Starting game loop...');
     gameState.gameRunning = true;
     gameState.lastUpdateTime = performance.now();
+    
+    generateFood();
+    gameLoop = requestAnimationFrame(updateGame);
+    renderGame();
+}
+
+function startGame() {
+    console.log('Starting game from mobile controller!');
+    gameState.currentState = GameState.PLAYING;
+    gameState.direction = { x: 0, y: 0 };
+    gameState.nextDirection = { x: 0, y: 0 };
     
     const gameOverScreen = document.getElementById('game-over');
     if (gameOverScreen) {
         gameOverScreen.classList.add('hidden');
     }
-    
-    generateFood();
-    gameLoop = requestAnimationFrame(updateGame);
-    renderGame();
 }
 
 function updateGame(currentTime) {
@@ -445,7 +449,7 @@ function updateGame(currentTime) {
     
     const deltaTime = currentTime - gameState.lastUpdateTime;
     
-    if (deltaTime >= gameState.speed) {
+    if (deltaTime >= gameState.speed && gameState.currentState === GameState.PLAYING) {
         if (gameState.nextDirection.x !== 0 || gameState.nextDirection.y !== 0) {
             gameState.direction = { ...gameState.nextDirection };
         }
@@ -511,10 +515,12 @@ function generateFood() {
     gameState.food = foodPosition;
 }
 
-// Draw arrow head pointing in the direction of movement
 function drawArrowHead(ctx, x, y, direction, size) {
     const centerX = x + size / 2;
     const centerY = y + size / 2;
+    
+    ctx.shadowColor = colors.snakeHead;
+    ctx.shadowBlur = 10;
     
     ctx.fillStyle = colors.snakeHead;
     ctx.beginPath();
@@ -537,15 +543,17 @@ function drawArrowHead(ctx, x, y, direction, size) {
         ctx.lineTo(x + 2, y + 2);
         ctx.lineTo(x + 2, y + size - 2);
     } else {
-        // Default case - draw regular square if no direction
+        // Default case - draw regular square if no direction (stationary)
         ctx.rect(x + 1, y + 1, size - 2, size - 2);
     }
     
     ctx.closePath();
     ctx.fill();
     
-    // Add a border to make it stand out
-    ctx.strokeStyle = '#00cc00';
+    ctx.shadowBlur = 0;
+    
+    // Add a border
+    ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1;
     ctx.stroke();
 }
@@ -557,7 +565,9 @@ function renderGame() {
     ctx.fillStyle = colors.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Draw snake body segments (skip head)
+    // Draw snake body segments (skip head) with glow effect
+    ctx.shadowColor = colors.snake;
+    ctx.shadowBlur = 5;
     ctx.fillStyle = colors.snake;
     for (let i = 1; i < gameState.snake.length; i++) {
         const segment = gameState.snake[i];
@@ -569,7 +579,9 @@ function renderGame() {
         );
     }
     
-    // Draw snake head as arrow
+    ctx.shadowBlur = 0;
+    
+    // Draw snake head as arrow (or square if stationary)
     if (gameState.snake.length > 0) {
         const head = gameState.snake[0];
         drawArrowHead(
@@ -581,7 +593,9 @@ function renderGame() {
         );
     }
     
-    // Draw food
+    // Draw food with glow effect
+    ctx.shadowColor = colors.food;
+    ctx.shadowBlur = 8;
     ctx.fillStyle = colors.food;
     ctx.fillRect(
         gameState.food.x * gameConfig.gridSize + 1,
@@ -589,6 +603,31 @@ function renderGame() {
         gameConfig.gridSize - 2,
         gameConfig.gridSize - 2
     );
+    
+    ctx.shadowBlur = 0;
+    
+    // Show "Waiting for mobile controller" message
+    if (gameState.currentState === GameState.WAITING_FOR_START) {
+        ctx.fillStyle = 'rgba(15, 15, 35, 0.9)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Create gradient text
+        const gradient = ctx.createLinearGradient(0, canvas.height / 2 - 40, 0, canvas.height / 2 + 80);
+        gradient.addColorStop(0, '#ff1493');
+        gradient.addColorStop(0.5, '#ff6b35');
+        gradient.addColorStop(1, '#f72585');
+        
+        ctx.fillStyle = gradient;
+        ctx.font = 'bold 28px Orbitron, monospace';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#ff1493';
+        ctx.shadowBlur = 10;
+        
+        ctx.fillText('Waiting for Mobile Controller', canvas.width / 2, canvas.height / 2 - 20);
+        ctx.fillText('Press START to Begin!', canvas.width / 2, canvas.height / 2 + 20);
+        
+        ctx.shadowBlur = 0;
+    }
 }
 
 function updateScore() {
@@ -607,7 +646,7 @@ function updateConnectionStatus(status) {
 
 function gameOver() {
     console.log('Game over! Final score:', gameState.score);
-    gameState.gameRunning = false;
+    gameState.currentState = GameState.GAME_OVER;
     
     const finalScoreElement = document.getElementById('final-score');
     if (finalScoreElement) {
@@ -618,24 +657,49 @@ function gameOver() {
     if (gameOverScreen) {
         gameOverScreen.classList.remove('hidden');
     }
+    
+    // Update Firebase with game over state
+    updateGameStateInFirebase();
 }
 
 function restartGame() {
-    console.log('Restarting game...');
+    console.log('Restarting game from mobile controller!');
     
     gameState = {
         snake: createInitialSnake(),
-        direction: { x: 0, y: -1 }, // Reset to upward direction
-        nextDirection: { x: 0, y: -1 },
+        direction: { x: 0, y: 0 },
+        nextDirection: { x: 0, y: 0 },
         food: { x: Math.floor(GRID_WIDTH / 4), y: Math.floor(GRID_HEIGHT / 4) },
         score: 0,
-        gameRunning: false,
+        gameRunning: true,
         speed: gameConfig.initialSpeed,
-        lastUpdateTime: 0
+        lastUpdateTime: 0,
+        currentState: GameState.PLAYING
     };
     
     updateScore();
-    startGame();
+    
+    const gameOverScreen = document.getElementById('game-over');
+    if (gameOverScreen) {
+        gameOverScreen.classList.add('hidden');
+    }
+    
+    generateFood();
+    
+    // Update Firebase with restart
+    updateGameStateInFirebase();
+}
+
+function updateGameStateInFirebase() {
+    if (firebaseReady && database && sessionManager.currentSession) {
+        const sessionRef = database.ref(`sessions/${sessionManager.currentSession}/gameState`);
+        sessionRef.update({
+            state: gameState.currentState,
+            score: gameState.score
+        }).catch(error => {
+            console.error('Error updating game state in Firebase:', error);
+        });
+    }
 }
 
 // Mobile Controller Functions
@@ -673,11 +737,6 @@ function setupMobileEventListeners() {
         });
     }
     
-    const scanBtn = document.getElementById('scan-btn');
-    if (scanBtn) {
-        scanBtn.addEventListener('click', simulateQRScan);
-    }
-    
     // Direction buttons
     const directions = ['up', 'down', 'left', 'right'];
     directions.forEach(direction => {
@@ -695,6 +754,23 @@ function setupMobileEventListeners() {
             });
         }
     });
+    
+    // Center button for start/restart
+    const centerBtn = document.getElementById('btn-center');
+    if (centerBtn) {
+        centerBtn.addEventListener('click', () => sendGameAction('start_restart'));
+        centerBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!centerBtn.disabled) {
+                sendGameAction('start_restart');
+                centerBtn.classList.add('active');
+            }
+        });
+        centerBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            centerBtn.classList.remove('active');
+        });
+    }
 }
 
 function connectToSession(sessionCode) {
@@ -717,6 +793,18 @@ async function connectViaFirebase(sessionCode) {
                 showControllerInterface();
                 showConnectionSuccess();
                 console.log('Connected to Firebase session:', sessionCode);
+                
+                // Listen for game state changes to enable/disable center button
+                sessionRef.child('gameState').on('value', (stateSnapshot) => {
+                    const gameStateData = stateSnapshot.val();
+                    if (gameStateData) {
+                        updateCenterButton(gameStateData.state);
+                    }
+                });
+                
+                // Initial center button state
+                updateCenterButton(GameState.WAITING_FOR_START);
+                
             } else {
                 showConnectionError('Session not found. Make sure the game is running on desktop.');
             }
@@ -736,6 +824,10 @@ function connectViaLocalStorage(sessionCode) {
         showControllerInterface();
         showConnectionSuccess();
         console.log('Connected to localStorage session:', sessionCode);
+        
+        // For localStorage, assume we can always start
+        updateCenterButton(GameState.WAITING_FOR_START);
+        
     } else {
         showConnectionError('Session not found. Make sure the game is running on desktop.');
     }
@@ -755,7 +847,7 @@ function showConnectionSuccess() {
     const statusElement = document.getElementById('mobile-connection-status');
     if (statusElement) {
         statusElement.textContent = 'Connected successfully!';
-        statusElement.style.color = '#00ff00';
+        statusElement.style.color = '#ff6b35';
     }
 }
 
@@ -763,7 +855,25 @@ function showConnectionError(message) {
     const statusElement = document.getElementById('mobile-connection-status');
     if (statusElement) {
         statusElement.textContent = message;
-        statusElement.style.color = '#ff0000';
+        statusElement.style.color = '#ff1493';
+    }
+}
+
+function updateCenterButton(currentState) {
+    const centerBtn = document.getElementById('btn-center');
+    if (!centerBtn) return;
+    
+    const btnLabel = centerBtn.querySelector('.btn-label');
+    
+    if (currentState === GameState.WAITING_FOR_START) {
+        centerBtn.disabled = false;
+        if (btnLabel) btnLabel.textContent = 'START';
+    } else if (currentState === GameState.GAME_OVER) {
+        centerBtn.disabled = false;
+        if (btnLabel) btnLabel.textContent = 'RESTART';
+    } else {
+        centerBtn.disabled = true;
+        if (btnLabel) btnLabel.textContent = 'PLAYING';
     }
 }
 
@@ -789,6 +899,22 @@ function sendDirection(direction) {
     }
 }
 
+function sendGameAction(action) {
+    if (!sessionManager.connectedSession) {
+        console.error('No connected session');
+        return;
+    }
+    
+    const actionToSend = action === 'start_restart' ? 'start' : action;
+    console.log('Sending game action:', actionToSend);
+    
+    if (firebaseReady && database) {
+        sendGameActionFirebase(actionToSend);
+    } else {
+        sendGameActionLocalStorage(actionToSend);
+    }
+}
+
 async function sendDirectionFirebase(direction) {
     try {
         const sessionRef = database.ref(`sessions/${sessionManager.connectedSession}`);
@@ -804,6 +930,21 @@ async function sendDirectionFirebase(direction) {
     }
 }
 
+async function sendGameActionFirebase(action) {
+    try {
+        const sessionRef = database.ref(`sessions/${sessionManager.connectedSession}`);
+        await sessionRef.update({
+            connected: true,
+            gameAction: action,
+            timestamp: Date.now()
+        });
+        console.log('Game action sent via Firebase:', action);
+    } catch (error) {
+        console.error('Error sending game action to Firebase:', error);
+        sendGameActionLocalStorage(action);
+    }
+}
+
 function sendDirectionLocalStorage(direction) {
     const sessionData = {
         direction: direction,
@@ -814,15 +955,12 @@ function sendDirectionLocalStorage(direction) {
     console.log('Direction sent via localStorage:', direction);
 }
 
-function simulateQRScan() {
-    const sessionCode = prompt('Enter session code (simulated QR scan):');
-    if (sessionCode && sessionCode.length === 6 && /^\d+$/.test(sessionCode)) {
-        const sessionInput = document.getElementById('session-input');
-        if (sessionInput) {
-            sessionInput.value = sessionCode;
-            connectToSession(sessionCode);
-        }
-    } else {
-        showConnectionError('Invalid session code format');
-    }
+function sendGameActionLocalStorage(action) {
+    const sessionData = {
+        gameAction: action,
+        timestamp: Date.now()
+    };
+    
+    localStorage.setItem(`session_${sessionManager.connectedSession}`, JSON.stringify(sessionData));
+    console.log('Game action sent via localStorage:', action);
 }
