@@ -56,13 +56,12 @@
                 <div class="control-panel">
                     <div class="score-card">
                         <div class="current-score">
-                            <span class="score-label">Score:</span>
+                            <span class="score-label">Score</span>
                             <span id="score" class="score-value">0</span>
                         </div>
                     </div>
 
                     <div class="connection-card">
-                        <h3>Mobile Controller</h3>
                         <div class="session-code">
                             <span class="code-label">Session Code:</span>
                             <span id="session-code" class="code-value">123456</span>
@@ -70,14 +69,12 @@
                         <div class="qr-container">
                             <div id="qr-code-container">
                                 <canvas id="qr-canvas" width="150" height="150"></canvas>
-                                <div id="qr-code-div"></div>
                             </div>
                             <div id="qr-loading" class="qr-loading">
                                 <div class="loading-spinner"></div>
                                 <p>Generating QR Code...</p>
                             </div>
                         </div>
-                        <div id="connection-status" class="connection-status">Generating session...</div>
                     </div>
                 </div>
             </div>
@@ -103,35 +100,20 @@
             </div>
         </div>
         
-        <!-- Controller Interface - Full Screen -->
+        <!-- Controller Interface - Joystick Style -->
         <div id="controller-interface" class="controller-interface">
-            <div class="controller-grid">
-                <!-- Top Row - Up Button -->
-                <div class="control-row top-row">
-                    <button id="btn-up" class="control-btn direction-btn">
-                        <span class="arrow">▲</span>
-                    </button>
+            <div class="joystick-container">
+                <!-- Joystick Control -->
+                <div class="joystick-area">
+                    <div id="joystick-base" class="joystick-base">
+                        <div id="joystick-handle" class="joystick-handle"></div>
+                    </div>
                 </div>
                 
-                <!-- Middle Row - Left, Center, Right -->
-                <div class="control-row middle-row">
-                    <button id="btn-left" class="control-btn direction-btn">
-                        <span class="arrow">◀</span>
-                    </button>
-                    
+                <!-- Center Control Button -->
+                <div class="center-control">
                     <button id="btn-center" class="control-btn center-btn" disabled>
                         <span class="center-icon">▶</span>
-                    </button>
-                    
-                    <button id="btn-right" class="control-btn direction-btn">
-                        <span class="arrow">▶</span>
-                    </button>
-                </div>
-                
-                <!-- Bottom Row - Down Button -->
-                <div class="control-row bottom-row">
-                    <button id="btn-down" class="control-btn direction-btn">
-                        <span class="arrow">▼</span>
                     </button>
                 </div>
             </div>

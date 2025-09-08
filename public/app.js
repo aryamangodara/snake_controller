@@ -40,13 +40,18 @@ if (typeof firebase !== 'undefined') {
     setTimeout(initializeFirebase, 2000);
 }
 
-// Game configuration
+// Game configuration - Improved for better gameplay
 const gameConfig = {
     boardSize: { width: 600, height: 600 },
-    gridSize: 20,
-    initialSpeed: 200,
-    speedIncrease: 10,
-    minSpeed: 80
+    snakeSegmentSize: 12,
+    foodSize: 8,
+    initialSpeed: 2.5, // Increased speed as requested
+    speedIncrease: 0.15,
+    maxSpeed: 6,
+    turnSpeed: 0.1, // Slightly faster turning
+    segmentSpacing: 15, // Consistent segment spacing
+    wallMargin: 20,
+    minSelfCollisionSegments: 8 // Skip more segments for collision
 };
 
 // Updated colors for the new synthwave aesthetic
@@ -60,21 +65,18 @@ const colors = {
     accent: "#ff1493"
 };
 
-// Calculate grid dimensions
-const GRID_WIDTH = Math.floor(gameConfig.boardSize.width / gameConfig.gridSize);
-const GRID_HEIGHT = Math.floor(gameConfig.boardSize.height / gameConfig.gridSize);
-
-// Create initial snake with length of 5, positioned vertically
+// Create initial snake with better spacing
 function createInitialSnake() {
-    const centerX = Math.floor(GRID_WIDTH / 2);
-    const centerY = Math.floor(GRID_HEIGHT / 2);
+    const centerX = gameConfig.boardSize.width / 2;
+    const centerY = gameConfig.boardSize.height / 2;
+    const spacing = gameConfig.segmentSpacing;
     
     return [
-        { x: centerX, y: centerY },     // Head
-        { x: centerX, y: centerY + 1 }, // Body segment 1
-        { x: centerX, y: centerY + 2 }, // Body segment 2
-        { x: centerX, y: centerY + 3 }, // Body segment 3
-        { x: centerX, y: centerY + 4 }  // Tail
+        { x: centerX, y: centerY },                    // Head
+        { x: centerX - spacing, y: centerY },          // Segment 1
+        { x: centerX - spacing * 2, y: centerY },      // Segment 2
+        { x: centerX - spacing * 3, y: centerY },      // Segment 3
+        { x: centerX - spacing * 4, y: centerY }       // Tail
     ];
 }
 
@@ -88,14 +90,20 @@ const GameState = {
 // Global game state
 let gameState = {
     snake: createInitialSnake(),
-    direction: { x: 0, y: 0 }, // Start stationary
-    nextDirection: { x: 0, y: 0 },
-    food: { x: Math.floor(GRID_WIDTH / 4), y: Math.floor(GRID_HEIGHT / 4) },
+    direction: 0, // Radians
+    targetDirection: 0,
+    speed: gameConfig.initialSpeed,
+    food: { 
+        x: gameConfig.boardSize.width * 0.75, 
+        y: gameConfig.boardSize.height * 0.25 
+    },
     score: 0,
     gameRunning: false,
-    speed: gameConfig.initialSpeed,
     lastUpdateTime: 0,
-    currentState: GameState.WAITING_FOR_START
+    currentState: GameState.WAITING_FOR_START,
+    joystickInput: { x: 0, y: 0 },
+    isMoving: false,
+    frameCount: 0
 };
 
 // Session management
@@ -104,12 +112,21 @@ let sessionManager = {
     isDesktop: true,
     connectedSession: null,
     firebaseConnected: false,
-    unsubscribe: null // For Firestore listener cleanup
+    unsubscribe: null
 };
 
 // Canvas and game elements
 let canvas, ctx;
 let gameLoop;
+
+// Joystick state for mobile
+let joystickState = {
+    isDragging: false,
+    baseElement: null,
+    handleElement: null,
+    baseRect: null,
+    maxDistance: 0
+};
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -160,10 +177,7 @@ function initializeDesktopGame() {
     
     console.log('Canvas initialized:', canvas.width, 'x', canvas.height);
     
-    // Generate session code and setup Firebase
     generateNewSession();
-    
-    // Start game loop (but game won't move until started from mobile)
     startGameLoop();
 }
 
@@ -179,7 +193,6 @@ function generateNewSession() {
     }
     
     generateQRCode(sessionCode);
-    updateConnectionStatus('Waiting for mobile connection...');
     
     if (firebaseReady && firestore) {
         setupFirestoreSession(sessionCode);
@@ -192,11 +205,10 @@ async function setupFirestoreSession(sessionCode) {
     try {
         const sessionDoc = firestore.collection('sessions').doc(sessionCode);
         
-        // Create session document
         await sessionDoc.set({
             created: firebase.firestore.FieldValue.serverTimestamp(),
             connected: false,
-            lastDirection: null,
+            joystickInput: { x: 0, y: 0 },
             gameAction: null,
             gameState: {
                 active: true,
@@ -207,31 +219,25 @@ async function setupFirestoreSession(sessionCode) {
         
         console.log('Session created in Firestore:', sessionCode);
         sessionManager.firebaseConnected = true;
-        updateConnectionStatus('Firestore connected - Waiting for mobile...');
         
-        // Listen for mobile controller input with real-time updates
         sessionManager.unsubscribe = sessionDoc.onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
                 if (data.connected) {
-                    if (data.lastDirection) {
-                        console.log('Received direction from Firestore:', data.lastDirection);
-                        handleDirectionFromMobile(data.lastDirection);
+                    if (data.joystickInput) {
+                        handleJoystickInputFromMobile(data.joystickInput);
                     }
                     if (data.gameAction) {
                         console.log('Received game action from Firestore:', data.gameAction);
                         handleGameActionFromMobile(data.gameAction);
-                        // Clear the action after processing
                         sessionDoc.update({ gameAction: null });
                     }
-                    updateConnectionStatus('Mobile connected via Firestore');
                 }
             }
         });
         
     } catch (error) {
         console.error('Firestore error:', error);
-        updateConnectionStatus('Firestore failed, using local mode');
         setupLocalStorageSession(sessionCode);
     }
 }
@@ -243,21 +249,17 @@ function setupLocalStorageSession(sessionCode) {
         state: GameState.WAITING_FOR_START,
         score: 0
     }));
-    updateConnectionStatus('Local mode - Waiting for mobile...');
     
-    // Listen for localStorage changes (cross-tab communication)
     window.addEventListener('storage', function(e) {
         if (e.key === `session_${sessionCode}`) {
             const data = JSON.parse(e.newValue || '{}');
-            if (data.direction) {
-                console.log('Received direction from localStorage:', data.direction);
-                handleDirectionFromMobile(data.direction);
+            if (data.joystickInput) {
+                handleJoystickInputFromMobile(data.joystickInput);
             }
             if (data.gameAction) {
                 console.log('Received game action from localStorage:', data.gameAction);
                 handleGameActionFromMobile(data.gameAction);
             }
-            updateConnectionStatus('Mobile connected via localStorage');
         }
     });
 }
@@ -267,7 +269,6 @@ function generateQRCode(sessionCode) {
     
     const qrContainer = document.getElementById('qr-code-container');
     const qrCanvas = document.getElementById('qr-canvas');
-    const qrDiv = document.getElementById('qr-code-div');
     const qrLoading = document.getElementById('qr-loading');
     
     if (!qrContainer) {
@@ -275,7 +276,6 @@ function generateQRCode(sessionCode) {
         return;
     }
     
-    // Show loading state
     if (qrLoading) qrLoading.style.display = 'flex';
     if (qrContainer) qrContainer.style.display = 'none';
     
@@ -284,7 +284,6 @@ function generateQRCode(sessionCode) {
     
     let qrGenerated = false;
     
-    // Try QRious library first
     if (typeof QRious !== 'undefined' && !qrGenerated) {
         try {
             console.log('Trying QRious library...');
@@ -292,8 +291,8 @@ function generateQRCode(sessionCode) {
                 element: qrCanvas,
                 value: gameUrl,
                 size: 150,
-                foreground: '#000000',  // Black QR code
-                background: '#ffffff'   // White background
+                foreground: '#000000',
+                background: '#ffffff'
             });
             
             qrGenerated = true;
@@ -307,42 +306,12 @@ function generateQRCode(sessionCode) {
         }
     }
     
-    // Try QRCode.js library
-    if (typeof QRCode !== 'undefined' && !qrGenerated) {
-        try {
-            console.log('Trying QRCode.js library...');
-            
-            qrDiv.innerHTML = '';
-            
-            const qr = new QRCode(qrDiv, {
-                text: gameUrl,
-                width: 150,
-                height: 150,
-                colorDark: '#000000',   // Black QR code
-                colorLight: '#ffffff'  // White background
-            });
-            
-            qrGenerated = true;
-            console.log('QR code generated successfully with QRCode.js');
-            
-            if (qrLoading) qrLoading.style.display = 'none';
-            if (qrContainer) qrContainer.style.display = 'block';
-            
-            if (qrCanvas) qrCanvas.style.display = 'none';
-            
-        } catch (error) {
-            console.error('QRCode.js failed:', error);
-        }
-    }
-    
-    // Fallback to placeholder
     if (!qrGenerated) {
-        console.log('All QR libraries failed, using placeholder');
+        console.log('QR libraries failed, using placeholder');
         setTimeout(() => {
             drawPlaceholderQR(qrCanvas, sessionCode);
             if (qrLoading) qrLoading.style.display = 'none';
             if (qrContainer) qrContainer.style.display = 'block';
-            if (qrDiv) qrDiv.style.display = 'none';
         }, 1000);
     }
 }
@@ -352,49 +321,34 @@ function drawPlaceholderQR(canvas, sessionCode) {
     
     const ctx = canvas.getContext('2d');
     
-    // Clear canvas - white background
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 150, 150);
     
-    // Draw border - black
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     ctx.strokeRect(5, 5, 140, 140);
     
-    // QR pattern simulation (corners) - black
     ctx.fillStyle = '#000000';
     
-    // Top-left corner
-    ctx.fillRect(15, 15, 25, 25);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(20, 20, 15, 15);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(23, 23, 9, 9);
+    // QR corner patterns
+    [
+        [15, 15], [110, 15], [15, 110]
+    ].forEach(([x, y]) => {
+        ctx.fillRect(x, y, 25, 25);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(x + 5, y + 5, 15, 15);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(x + 8, y + 8, 9, 9);
+    });
     
-    // Top-right corner
-    ctx.fillRect(110, 15, 25, 25);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(115, 20, 15, 15);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(118, 23, 9, 9);
-    
-    // Bottom-left corner
-    ctx.fillRect(15, 110, 25, 25);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(20, 115, 15, 15);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(23, 118, 9, 9);
-    
-    // Random pattern in middle - black
-    ctx.fillStyle = '#000000';
+    // Random pattern
     for (let i = 0; i < 20; i++) {
         const x = Math.floor(Math.random() * 100) + 25;
         const y = Math.floor(Math.random() * 100) + 25;
         ctx.fillRect(x, y, 3, 3);
     }
     
-    // Center text - black
-    ctx.fillStyle = '#000000';
+    // Center text
     ctx.font = 'bold 10px Arial';
     ctx.textAlign = 'center';
     ctx.fillText('SCAN QR', 75, 60);
@@ -403,21 +357,16 @@ function drawPlaceholderQR(canvas, sessionCode) {
     ctx.fillText('or enter code', 75, 87);
 }
 
-function handleDirectionFromMobile(direction) {
-    console.log('Handling direction from mobile:', direction);
-    
-    const directionMap = {
-        'up': { x: 0, y: -1 },
-        'down': { x: 0, y: 1 },
-        'left': { x: -1, y: 0 },
-        'right': { x: 1, y: 0 }
-    };
-    
-    const newDirection = directionMap[direction];
-    if (newDirection && gameState.currentState === GameState.PLAYING) {
-        // Prevent reverse direction
-        if (gameState.direction.x !== -newDirection.x || gameState.direction.y !== -newDirection.y) {
-            gameState.nextDirection = newDirection;
+function handleJoystickInputFromMobile(joystickInput) {
+    if (gameState.currentState === GameState.PLAYING) {
+        gameState.joystickInput = joystickInput;
+        
+        const magnitude = Math.sqrt(joystickInput.x * joystickInput.x + joystickInput.y * joystickInput.y);
+        if (magnitude > 0.15) {
+            gameState.isMoving = true;
+            gameState.targetDirection = Math.atan2(joystickInput.y, joystickInput.x);
+        } else {
+            gameState.isMoving = false;
         }
     }
 }
@@ -445,8 +394,11 @@ function startGameLoop() {
 function startGame() {
     console.log('Starting game from mobile controller!');
     gameState.currentState = GameState.PLAYING;
-    gameState.direction = { x: 0, y: 0 };
-    gameState.nextDirection = { x: 0, y: 0 };
+    gameState.direction = 0;
+    gameState.targetDirection = 0;
+    gameState.joystickInput = { x: 0, y: 0 };
+    gameState.isMoving = false;
+    gameState.frameCount = 0;
     
     const gameOverScreen = document.getElementById('game-over');
     if (gameOverScreen) {
@@ -461,12 +413,11 @@ function updateGame(currentTime) {
     
     const deltaTime = currentTime - gameState.lastUpdateTime;
     
-    if (deltaTime >= gameState.speed && gameState.currentState === GameState.PLAYING) {
-        if (gameState.nextDirection.x !== 0 || gameState.nextDirection.y !== 0) {
-            gameState.direction = { ...gameState.nextDirection };
-        }
+    if (gameState.currentState === GameState.PLAYING && deltaTime >= 16) { // 60 FPS
+        gameState.frameCount++;
         
-        if (gameState.direction.x !== 0 || gameState.direction.y !== 0) {
+        if (gameState.isMoving) {
+            updateSnakeDirection();
             moveSnake();
         }
         
@@ -480,94 +431,180 @@ function updateGame(currentTime) {
     }
 }
 
+function updateSnakeDirection() {
+    if (!gameState.isMoving) return;
+    
+    let angleDiff = gameState.targetDirection - gameState.direction;
+    
+    // Normalize angle difference
+    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+    
+    // Smooth turning
+    if (Math.abs(angleDiff) > gameConfig.turnSpeed) {
+        gameState.direction += Math.sign(angleDiff) * gameConfig.turnSpeed;
+    } else {
+        gameState.direction = gameState.targetDirection;
+    }
+    
+    // Normalize direction
+    while (gameState.direction < 0) gameState.direction += 2 * Math.PI;
+    while (gameState.direction >= 2 * Math.PI) gameState.direction -= 2 * Math.PI;
+}
+
 function moveSnake() {
+    if (gameState.snake.length === 0) return;
+    
+    // Store previous head position for proper segment following
+    const prevHead = { ...gameState.snake[0] };
+    
+    // Calculate new head position
     const head = { ...gameState.snake[0] };
-    head.x += gameState.direction.x;
-    head.y += gameState.direction.y;
+    const magnitude = Math.sqrt(gameState.joystickInput.x * gameState.joystickInput.x + gameState.joystickInput.y * gameState.joystickInput.y);
+    const moveSpeed = Math.min(magnitude, 1) * gameState.speed;
+    
+    head.x += Math.cos(gameState.direction) * moveSpeed;
+    head.y += Math.sin(gameState.direction) * moveSpeed;
     
     // Check wall collision
-    if (head.x < 0 || head.x >= GRID_WIDTH || head.y < 0 || head.y >= GRID_HEIGHT) {
+    if (head.x < gameConfig.wallMargin || 
+        head.x > gameConfig.boardSize.width - gameConfig.wallMargin ||
+        head.y < gameConfig.wallMargin || 
+        head.y > gameConfig.boardSize.height - gameConfig.wallMargin) {
+        console.log('Wall collision! Head at:', head.x.toFixed(2), head.y.toFixed(2));
         gameOver();
         return;
     }
     
-    // Check self collision
-    for (let segment of gameState.snake) {
-        if (head.x === segment.x && head.y === segment.y) {
+    // Check self collision - only check segments far enough away
+    for (let i = gameConfig.minSelfCollisionSegments; i < gameState.snake.length; i++) {
+        const segment = gameState.snake[i];
+        const distance = Math.sqrt(
+            Math.pow(head.x - segment.x, 2) + Math.pow(head.y - segment.y, 2)
+        );
+        if (distance < gameConfig.snakeSegmentSize * 0.8) {
+            console.log('Self collision with segment', i, 'distance:', distance.toFixed(2), 'snake length:', gameState.snake.length);
             gameOver();
             return;
         }
     }
     
-    gameState.snake.unshift(head);
+    // Update head position
+    gameState.snake[0] = head;
+    
+    // Move body segments to follow the head properly
+    updateSnakeSegments(prevHead);
     
     // Check food collision
-    if (head.x === gameState.food.x && head.y === gameState.food.y) {
+    const foodDistance = Math.sqrt(
+        Math.pow(head.x - gameState.food.x, 2) + Math.pow(head.y - gameState.food.y, 2)
+    );
+    
+    if (foodDistance < (gameConfig.snakeSegmentSize + gameConfig.foodSize)) {
+        console.log('Food collected! Score:', gameState.score + 10, 'Snake will grow from', gameState.snake.length, 'to', gameState.snake.length + 1);
         gameState.score += 10;
         updateScore();
         generateFood();
         
-        if (gameState.speed > gameConfig.minSpeed) {
-            gameState.speed = Math.max(gameConfig.minSpeed, gameState.speed - gameConfig.speedIncrease);
+        // Add new segment at the tail
+        addSnakeSegment();
+        
+        // Increase speed gradually
+        if (gameState.speed < gameConfig.maxSpeed) {
+            gameState.speed = Math.min(gameConfig.maxSpeed, gameState.speed + gameConfig.speedIncrease);
+            console.log('Speed increased to:', gameState.speed);
         }
-    } else {
-        gameState.snake.pop();
+    }
+}
+
+function updateSnakeSegments(prevHeadPos) {
+    // Move each segment to follow the one in front of it
+    for (let i = 1; i < gameState.snake.length; i++) {
+        const currentSegment = gameState.snake[i];
+        const targetSegment = i === 1 ? prevHeadPos : gameState.snake[i - 1];
+        
+        // Calculate direction from current segment to target
+        const dx = targetSegment.x - currentSegment.x;
+        const dy = targetSegment.y - currentSegment.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Only move if the distance is greater than desired spacing
+        if (distance > gameConfig.segmentSpacing) {
+            const ratio = (distance - gameConfig.segmentSpacing) / distance;
+            currentSegment.x += dx * ratio * 0.8; // Smooth following with 80% catch-up
+            currentSegment.y += dy * ratio * 0.8;
+        }
+    }
+}
+
+function addSnakeSegment() {
+    // Add a new segment at the end of the snake
+    if (gameState.snake.length > 0) {
+        const tail = gameState.snake[gameState.snake.length - 1];
+        let newSegment;
+        
+        if (gameState.snake.length > 1) {
+            // Calculate position based on the direction from second-to-last to last segment
+            const secondToLast = gameState.snake[gameState.snake.length - 2];
+            const dx = tail.x - secondToLast.x;
+            const dy = tail.y - secondToLast.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 0) {
+                const ratio = gameConfig.segmentSpacing / distance;
+                newSegment = {
+                    x: tail.x + dx * ratio,
+                    y: tail.y + dy * ratio
+                };
+            } else {
+                // Fallback if segments are at the same position
+                newSegment = {
+                    x: tail.x - gameConfig.segmentSpacing,
+                    y: tail.y
+                };
+            }
+        } else {
+            // Only head exists, add segment behind it
+            newSegment = {
+                x: tail.x - gameConfig.segmentSpacing,
+                y: tail.y
+            };
+        }
+        
+        gameState.snake.push(newSegment);
+        console.log('New segment added. Snake length now:', gameState.snake.length);
     }
 }
 
 function generateFood() {
-    let foodPosition;
+    let attempts = 0;
+    const maxAttempts = 30;
+    const margin = gameConfig.wallMargin + gameConfig.foodSize;
+    
     do {
-        foodPosition = {
-            x: Math.floor(Math.random() * GRID_WIDTH),
-            y: Math.floor(Math.random() * GRID_HEIGHT)
+        gameState.food = {
+            x: Math.random() * (gameConfig.boardSize.width - margin * 2) + margin,
+            y: Math.random() * (gameConfig.boardSize.height - margin * 2) + margin
         };
-    } while (gameState.snake.some(segment => segment.x === foodPosition.x && segment.y === foodPosition.y));
+        attempts++;
+        
+        // Check if food is away from snake
+        let tooClose = false;
+        for (let segment of gameState.snake) {
+            const distance = Math.sqrt(
+                Math.pow(gameState.food.x - segment.x, 2) + Math.pow(gameState.food.y - segment.y, 2)
+            );
+            if (distance < gameConfig.segmentSpacing * 2) {
+                tooClose = true;
+                break;
+            }
+        }
+        
+        if (!tooClose) break;
+        
+    } while (attempts < maxAttempts);
     
-    gameState.food = foodPosition;
-}
-
-function drawArrowHead(ctx, x, y, direction, size) {
-    const centerX = x + size / 2;
-    const centerY = y + size / 2;
-    
-    ctx.shadowColor = colors.snakeHead;
-    ctx.shadowBlur = 10;
-    
-    ctx.fillStyle = colors.snakeHead;
-    ctx.beginPath();
-    
-    // Create arrow shape based on direction
-    if (direction.x === 0 && direction.y === -1) { // Up
-        ctx.moveTo(centerX, y + 2);
-        ctx.lineTo(x + 2, y + size - 2);
-        ctx.lineTo(x + size - 2, y + size - 2);
-    } else if (direction.x === 0 && direction.y === 1) { // Down
-        ctx.moveTo(centerX, y + size - 2);
-        ctx.lineTo(x + 2, y + 2);
-        ctx.lineTo(x + size - 2, y + 2);
-    } else if (direction.x === -1 && direction.y === 0) { // Left
-        ctx.moveTo(x + 2, centerY);
-        ctx.lineTo(x + size - 2, y + 2);
-        ctx.lineTo(x + size - 2, y + size - 2);
-    } else if (direction.x === 1 && direction.y === 0) { // Right
-        ctx.moveTo(x + size - 2, centerY);
-        ctx.lineTo(x + 2, y + 2);
-        ctx.lineTo(x + 2, y + size - 2);
-    } else {
-        // Default case - draw regular square if no direction (stationary)
-        ctx.rect(x + 1, y + 1, size - 2, size - 2);
-    }
-    
-    ctx.closePath();
-    ctx.fill();
-    
-    ctx.shadowBlur = 0;
-    
-    // Add a border
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    console.log('Food generated at:', gameState.food.x.toFixed(2), gameState.food.y.toFixed(2));
 }
 
 function renderGame() {
@@ -577,60 +614,86 @@ function renderGame() {
     ctx.fillStyle = colors.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Draw snake body segments (skip head) with glow effect
+    // Draw debug boundaries
+    if (gameState.currentState === GameState.PLAYING) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(gameConfig.wallMargin, gameConfig.wallMargin, 
+                      gameConfig.boardSize.width - gameConfig.wallMargin * 2, 
+                      gameConfig.boardSize.height - gameConfig.wallMargin * 2);
+    }
+    
+    // Draw snake body segments (skip head)
     ctx.shadowColor = colors.snake;
-    ctx.shadowBlur = 5;
+    ctx.shadowBlur = 8;
     ctx.fillStyle = colors.snake;
+    
     for (let i = 1; i < gameState.snake.length; i++) {
         const segment = gameState.snake[i];
-        ctx.fillRect(
-            segment.x * gameConfig.gridSize + 1,
-            segment.y * gameConfig.gridSize + 1,
-            gameConfig.gridSize - 2,
-            gameConfig.gridSize - 2
-        );
+        ctx.beginPath();
+        ctx.arc(segment.x, segment.y, gameConfig.snakeSegmentSize / 2, 0, 2 * Math.PI);
+        ctx.fill();
     }
     
     ctx.shadowBlur = 0;
     
-    // Draw snake head as arrow (or square if stationary)
+    // Draw snake head
     if (gameState.snake.length > 0) {
         const head = gameState.snake[0];
-        drawArrowHead(
-            ctx, 
-            head.x * gameConfig.gridSize, 
-            head.y * gameConfig.gridSize, 
-            gameState.direction, 
-            gameConfig.gridSize
-        );
+        
+        // Head circle
+        ctx.shadowColor = colors.snakeHead;
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = colors.snakeHead;
+        ctx.beginPath();
+        ctx.arc(head.x, head.y, gameConfig.snakeSegmentSize / 2, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Direction arrow - only when moving
+        if (gameState.isMoving && gameState.currentState === GameState.PLAYING) {
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#ffffff';
+            ctx.save();
+            ctx.translate(head.x, head.y);
+            ctx.rotate(gameState.direction);
+            
+            // Draw arrow
+            const arrowSize = gameConfig.snakeSegmentSize / 3;
+            ctx.beginPath();
+            ctx.moveTo(arrowSize, 0);
+            ctx.lineTo(-arrowSize / 2, -arrowSize / 2);
+            ctx.lineTo(-arrowSize / 2, arrowSize / 2);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        ctx.shadowBlur = 0;
     }
     
-    // Draw food with glow effect
+    // Draw food
     ctx.shadowColor = colors.food;
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 15;
     ctx.fillStyle = colors.food;
-    ctx.fillRect(
-        gameState.food.x * gameConfig.gridSize + 1,
-        gameState.food.y * gameConfig.gridSize + 1,
-        gameConfig.gridSize - 2,
-        gameConfig.gridSize - 2
-    );
+    ctx.beginPath();
+    ctx.arc(gameState.food.x, gameState.food.y, gameConfig.foodSize, 0, 2 * Math.PI);
+    ctx.fill();
     
     ctx.shadowBlur = 0;
     
-    // Show "Waiting for mobile controller" message
+    // Show waiting message
     if (gameState.currentState === GameState.WAITING_FOR_START) {
         ctx.fillStyle = 'rgba(15, 15, 35, 0.9)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Create gradient text
         const gradient = ctx.createLinearGradient(0, canvas.height / 2 - 40, 0, canvas.height / 2 + 80);
         gradient.addColorStop(0, '#ff1493');
         gradient.addColorStop(0.5, '#ff6b35');
         gradient.addColorStop(1, '#f72585');
         
         ctx.fillStyle = gradient;
-        ctx.font = 'bold 28px Orbitron, monospace';
+        ctx.font = 'bold 24px Orbitron, monospace';
         ctx.textAlign = 'center';
         ctx.shadowColor = '#ff1493';
         ctx.shadowBlur = 10;
@@ -649,16 +712,10 @@ function updateScore() {
     }
 }
 
-function updateConnectionStatus(status) {
-    const statusElement = document.getElementById('connection-status');
-    if (statusElement) {
-        statusElement.textContent = status;
-    }
-}
-
 function gameOver() {
-    console.log('Game over! Final score:', gameState.score);
+    console.log('Game over! Final score:', gameState.score, 'Snake length:', gameState.snake.length);
     gameState.currentState = GameState.GAME_OVER;
+    gameState.isMoving = false;
     
     const finalScoreElement = document.getElementById('final-score');
     if (finalScoreElement) {
@@ -670,7 +727,6 @@ function gameOver() {
         gameOverScreen.classList.remove('hidden');
     }
     
-    // Update Firestore with game over state
     updateGameStateInFirestore();
 }
 
@@ -679,14 +735,20 @@ function restartGame() {
     
     gameState = {
         snake: createInitialSnake(),
-        direction: { x: 0, y: 0 },
-        nextDirection: { x: 0, y: 0 },
-        food: { x: Math.floor(GRID_WIDTH / 4), y: Math.floor(GRID_HEIGHT / 4) },
+        direction: 0,
+        targetDirection: 0,
+        speed: gameConfig.initialSpeed,
+        food: { 
+            x: gameConfig.boardSize.width * 0.75, 
+            y: gameConfig.boardSize.height * 0.25 
+        },
         score: 0,
         gameRunning: true,
-        speed: gameConfig.initialSpeed,
         lastUpdateTime: 0,
-        currentState: GameState.PLAYING
+        currentState: GameState.PLAYING,
+        joystickInput: { x: 0, y: 0 },
+        isMoving: false,
+        frameCount: 0
     };
     
     updateScore();
@@ -697,8 +759,6 @@ function restartGame() {
     }
     
     generateFood();
-    
-    // Update Firestore with restart
     updateGameStateInFirestore();
 }
 
@@ -715,7 +775,6 @@ async function updateGameStateInFirestore() {
             console.error('Error updating game state in Firestore:', error);
         }
     } else if (sessionManager.currentSession) {
-        // Update localStorage
         localStorage.setItem(`session_${sessionManager.currentSession}_state`, JSON.stringify({
             state: gameState.currentState,
             score: gameState.score
@@ -727,7 +786,6 @@ async function updateGameStateInFirestore() {
 function initializeMobileController() {
     console.log('Initializing mobile controller...');
     
-    // Check for session code in URL
     const urlParams = new URLSearchParams(window.location.search);
     const sessionFromUrl = urlParams.get('session');
     
@@ -758,25 +816,8 @@ function setupMobileEventListeners() {
         });
     }
     
-    // Direction buttons
-    const directions = ['up', 'down', 'left', 'right'];
-    directions.forEach(direction => {
-        const btn = document.getElementById(`btn-${direction}`);
-        if (btn) {
-            btn.addEventListener('click', () => sendDirection(direction));
-            btn.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                sendDirection(direction);
-                btn.classList.add('active');
-            });
-            btn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                btn.classList.remove('active');
-            });
-        }
-    });
+    setupJoystickControls();
     
-    // Center button for start/restart
     const centerBtn = document.getElementById('btn-center');
     if (centerBtn) {
         centerBtn.addEventListener('click', function() {
@@ -800,11 +841,119 @@ function setupMobileEventListeners() {
     }
 }
 
+function setupJoystickControls() {
+    const joystickBase = document.getElementById('joystick-base');
+    const joystickHandle = document.getElementById('joystick-handle');
+    
+    if (!joystickBase || !joystickHandle) return;
+    
+    joystickState.baseElement = joystickBase;
+    joystickState.handleElement = joystickHandle;
+    
+    // Mouse events
+    joystickHandle.addEventListener('mousedown', startJoystickDrag);
+    document.addEventListener('mousemove', handleJoystickDrag);
+    document.addEventListener('mouseup', endJoystickDrag);
+    
+    // Touch events
+    joystickHandle.addEventListener('touchstart', startJoystickDrag);
+    document.addEventListener('touchmove', handleJoystickDrag, { passive: false });
+    document.addEventListener('touchend', endJoystickDrag);
+    
+    joystickBase.addEventListener('mousedown', moveJoystickToPosition);
+    joystickBase.addEventListener('touchstart', moveJoystickToPosition);
+}
+
+function startJoystickDrag(e) {
+    e.preventDefault();
+    joystickState.isDragging = true;
+    joystickState.handleElement.classList.add('dragging');
+    
+    const rect = joystickState.baseElement.getBoundingClientRect();
+    joystickState.baseRect = rect;
+    joystickState.maxDistance = rect.width / 2 * 0.8;
+}
+
+function handleJoystickDrag(e) {
+    if (!joystickState.isDragging) return;
+    
+    e.preventDefault();
+    
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    
+    if (!clientX || !clientY) return;
+    
+    const rect = joystickState.baseRect;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    let deltaX = clientX - centerX;
+    let deltaY = clientY - centerY;
+    
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    if (distance > joystickState.maxDistance) {
+        const ratio = joystickState.maxDistance / distance;
+        deltaX *= ratio;
+        deltaY *= ratio;
+    }
+    
+    joystickState.handleElement.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+    
+    const normalizedX = deltaX / joystickState.maxDistance;
+    const normalizedY = deltaY / joystickState.maxDistance;
+    
+    sendJoystickInput(normalizedX, normalizedY);
+}
+
+function endJoystickDrag(e) {
+    if (!joystickState.isDragging) return;
+    
+    e.preventDefault();
+    joystickState.isDragging = false;
+    joystickState.handleElement.classList.remove('dragging');
+    
+    joystickState.handleElement.style.transform = 'translate(0px, 0px)';
+    sendJoystickInput(0, 0);
+}
+
+function moveJoystickToPosition(e) {
+    if (joystickState.isDragging) return;
+    
+    e.preventDefault();
+    
+    const rect = joystickState.baseElement.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    
+    let deltaX = clientX - centerX;
+    let deltaY = clientY - centerY;
+    
+    const maxDistance = rect.width / 2 * 0.8;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    if (distance > maxDistance) {
+        const ratio = maxDistance / distance;
+        deltaX *= ratio;
+        deltaY *= ratio;
+    }
+    
+    joystickState.isDragging = true;
+    joystickState.baseRect = rect;
+    joystickState.maxDistance = maxDistance;
+    
+    handleJoystickDrag({ clientX, clientY, preventDefault: () => {} });
+}
+
 function handleCenterButtonPress(centerBtn) {
     const currentIcon = centerBtn.querySelector('.center-icon').textContent;
-    if (currentIcon === '▶') { // Play
+    if (currentIcon === '▶') {
         sendGameAction('start');
-    } else if (currentIcon === '↻') { // Restart
+    } else if (currentIcon === '↻') {
         sendGameAction('restart');
     }
 }
@@ -823,7 +972,6 @@ async function connectViaFirestore(sessionCode) {
     try {
         const sessionDoc = firestore.collection('sessions').doc(sessionCode);
         
-        // Check if session exists
         const docSnapshot = await sessionDoc.get();
         if (docSnapshot.exists) {
             sessionManager.connectedSession = sessionCode;
@@ -831,7 +979,6 @@ async function connectViaFirestore(sessionCode) {
             showConnectionSuccess();
             console.log('Connected to Firestore session:', sessionCode);
             
-            // Listen for game state changes to update center button
             sessionManager.unsubscribe = sessionDoc.onSnapshot((doc) => {
                 if (doc.exists) {
                     const data = doc.data();
@@ -841,7 +988,6 @@ async function connectViaFirestore(sessionCode) {
                 }
             });
             
-            // Initial center button state
             const data = docSnapshot.data();
             if (data.gameState) {
                 updateCenterButtonIcon(data.gameState.state);
@@ -868,12 +1014,10 @@ function connectViaLocalStorage(sessionCode) {
         showConnectionSuccess();
         console.log('Connected to localStorage session:', sessionCode);
         
-        // Get initial game state
         const gameStateStr = localStorage.getItem(`session_${sessionCode}_state`);
         const gameStateData = gameStateStr ? JSON.parse(gameStateStr) : { state: GameState.WAITING_FOR_START };
         updateCenterButtonIcon(gameStateData.state);
         
-        // Listen for localStorage changes for game state updates
         window.addEventListener('storage', function(e) {
             if (e.key === `session_${sessionCode}_state`) {
                 const data = JSON.parse(e.newValue || '{}');
@@ -920,45 +1064,34 @@ function updateCenterButtonIcon(currentState) {
     
     const btnIcon = centerBtn.querySelector('.center-icon');
     
-    // Remove all state classes
     centerBtn.classList.remove('ready', 'playing', 'restart');
     
     if (currentState === GameState.WAITING_FOR_START) {
         centerBtn.disabled = false;
         centerBtn.classList.add('ready');
-        if (btnIcon) btnIcon.textContent = '▶'; // Play icon
+        if (btnIcon) btnIcon.textContent = '▶';
     } else if (currentState === GameState.GAME_OVER) {
         centerBtn.disabled = false;
         centerBtn.classList.add('restart');
-        if (btnIcon) btnIcon.textContent = '↻'; // Restart icon
+        if (btnIcon) btnIcon.textContent = '↻';
     } else if (currentState === GameState.PLAYING) {
         centerBtn.disabled = true;
         centerBtn.classList.add('playing');
-        if (btnIcon) btnIcon.textContent = '🐍'; // Snake emoji
+        if (btnIcon) btnIcon.textContent = '🐍';
     }
     
     console.log('Center button updated for state:', currentState);
 }
 
-function sendDirection(direction) {
-    if (!sessionManager.connectedSession) {
-        console.error('No connected session');
-        return;
-    }
+function sendJoystickInput(x, y) {
+    if (!sessionManager.connectedSession) return;
     
-    console.log('Sending direction:', direction);
+    const joystickInput = { x, y };
     
     if (firebaseReady && firestore) {
-        sendDirectionFirestore(direction);
+        sendJoystickInputFirestore(joystickInput);
     } else {
-        sendDirectionLocalStorage(direction);
-    }
-    
-    // Visual feedback
-    const btn = document.getElementById(`btn-${direction}`);
-    if (btn) {
-        btn.classList.add('pressed');
-        setTimeout(() => btn.classList.remove('pressed'), 200);
+        sendJoystickInputLocalStorage(joystickInput);
     }
 }
 
@@ -977,18 +1110,17 @@ function sendGameAction(action) {
     }
 }
 
-async function sendDirectionFirestore(direction) {
+async function sendJoystickInputFirestore(joystickInput) {
     try {
         const sessionDoc = firestore.collection('sessions').doc(sessionManager.connectedSession);
         await sessionDoc.update({
             connected: true,
-            lastDirection: direction,
+            joystickInput: joystickInput,
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
-        console.log('Direction sent via Firestore:', direction);
     } catch (error) {
-        console.error('Error sending direction to Firestore:', error);
-        sendDirectionLocalStorage(direction);
+        console.error('Error sending joystick input to Firestore:', error);
+        sendJoystickInputLocalStorage(joystickInput);
     }
 }
 
@@ -1007,14 +1139,13 @@ async function sendGameActionFirestore(action) {
     }
 }
 
-function sendDirectionLocalStorage(direction) {
+function sendJoystickInputLocalStorage(joystickInput) {
     const sessionData = {
-        direction: direction,
+        joystickInput: joystickInput,
         timestamp: Date.now()
     };
     
     localStorage.setItem(`session_${sessionManager.connectedSession}`, JSON.stringify(sessionData));
-    console.log('Direction sent via localStorage:', direction);
 }
 
 function sendGameActionLocalStorage(action) {
