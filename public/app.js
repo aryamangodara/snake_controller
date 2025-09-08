@@ -10,8 +10,8 @@ const firebaseConfig = {
     measurementId: "G-0DFSB38H21"
 };
 
-// Initialize Firebase
-let app, database;
+// Initialize Firebase with Firestore
+let app, firestore;
 let firebaseReady = false;
 
 // Initialize Firebase when DOM is ready or Firebase is loaded
@@ -24,9 +24,9 @@ function initializeFirebase() {
         }
         
         app = firebase.initializeApp(firebaseConfig);
-        database = firebase.database();
+        firestore = firebase.firestore();
         firebaseReady = true;
-        console.log('Firebase initialized successfully');
+        console.log('Firebase with Firestore initialized successfully');
     } catch (error) {
         console.warn('Firebase initialization failed:', error);
         console.log('Running in offline mode');
@@ -103,7 +103,8 @@ let sessionManager = {
     currentSession: null,
     isDesktop: true,
     connectedSession: null,
-    firebaseConnected: false
+    firebaseConnected: false,
+    unsubscribe: null // For Firestore listener cleanup
 };
 
 // Canvas and game elements
@@ -180,19 +181,20 @@ function generateNewSession() {
     generateQRCode(sessionCode);
     updateConnectionStatus('Waiting for mobile connection...');
     
-    if (firebaseReady && database) {
-        setupFirebaseSession(sessionCode);
+    if (firebaseReady && firestore) {
+        setupFirestoreSession(sessionCode);
     } else {
         setupLocalStorageSession(sessionCode);
     }
 }
 
-async function setupFirebaseSession(sessionCode) {
+async function setupFirestoreSession(sessionCode) {
     try {
-        const sessionRef = database.ref(`sessions/${sessionCode}`);
+        const sessionDoc = firestore.collection('sessions').doc(sessionCode);
         
-        await sessionRef.set({
-            created: Date.now(),
+        // Create session document
+        await sessionDoc.set({
+            created: firebase.firestore.FieldValue.serverTimestamp(),
             connected: false,
             lastDirection: null,
             gameAction: null,
@@ -203,29 +205,33 @@ async function setupFirebaseSession(sessionCode) {
             }
         });
         
-        console.log('Session created in Firebase:', sessionCode);
+        console.log('Session created in Firestore:', sessionCode);
         sessionManager.firebaseConnected = true;
-        updateConnectionStatus('Firebase connected - Waiting for mobile...');
+        updateConnectionStatus('Firestore connected - Waiting for mobile...');
         
-        // Listen for mobile controller input
-        sessionRef.on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (data && data.connected) {
-                if (data.lastDirection) {
-                    console.log('Received direction from Firebase:', data.lastDirection);
-                    handleDirectionFromMobile(data.lastDirection);
+        // Listen for mobile controller input with real-time updates
+        sessionManager.unsubscribe = sessionDoc.onSnapshot((doc) => {
+            if (doc.exists) {
+                const data = doc.data();
+                if (data.connected) {
+                    if (data.lastDirection) {
+                        console.log('Received direction from Firestore:', data.lastDirection);
+                        handleDirectionFromMobile(data.lastDirection);
+                    }
+                    if (data.gameAction) {
+                        console.log('Received game action from Firestore:', data.gameAction);
+                        handleGameActionFromMobile(data.gameAction);
+                        // Clear the action after processing
+                        sessionDoc.update({ gameAction: null });
+                    }
+                    updateConnectionStatus('Mobile connected via Firestore');
                 }
-                if (data.gameAction) {
-                    console.log('Received game action from Firebase:', data.gameAction);
-                    handleGameActionFromMobile(data.gameAction);
-                }
-                updateConnectionStatus('Mobile connected via Firebase');
             }
         });
         
     } catch (error) {
-        console.error('Firebase error:', error);
-        updateConnectionStatus('Firebase failed, using local mode');
+        console.error('Firestore error:', error);
+        updateConnectionStatus('Firestore failed, using local mode');
         setupLocalStorageSession(sessionCode);
     }
 }
@@ -233,6 +239,10 @@ async function setupFirebaseSession(sessionCode) {
 function setupLocalStorageSession(sessionCode) {
     console.log('Using localStorage for session:', sessionCode);
     localStorage.setItem('currentSession', sessionCode);
+    localStorage.setItem(`session_${sessionCode}_state`, JSON.stringify({
+        state: GameState.WAITING_FOR_START,
+        score: 0
+    }));
     updateConnectionStatus('Local mode - Waiting for mobile...');
     
     // Listen for localStorage changes (cross-tab communication)
@@ -442,6 +452,8 @@ function startGame() {
     if (gameOverScreen) {
         gameOverScreen.classList.add('hidden');
     }
+    
+    updateGameStateInFirestore();
 }
 
 function updateGame(currentTime) {
@@ -624,7 +636,7 @@ function renderGame() {
         ctx.shadowBlur = 10;
         
         ctx.fillText('Waiting for Mobile Controller', canvas.width / 2, canvas.height / 2 - 20);
-        ctx.fillText('Press START to Begin!', canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText('Press PLAY to Begin!', canvas.width / 2, canvas.height / 2 + 20);
         
         ctx.shadowBlur = 0;
     }
@@ -658,8 +670,8 @@ function gameOver() {
         gameOverScreen.classList.remove('hidden');
     }
     
-    // Update Firebase with game over state
-    updateGameStateInFirebase();
+    // Update Firestore with game over state
+    updateGameStateInFirestore();
 }
 
 function restartGame() {
@@ -686,19 +698,28 @@ function restartGame() {
     
     generateFood();
     
-    // Update Firebase with restart
-    updateGameStateInFirebase();
+    // Update Firestore with restart
+    updateGameStateInFirestore();
 }
 
-function updateGameStateInFirebase() {
-    if (firebaseReady && database && sessionManager.currentSession) {
-        const sessionRef = database.ref(`sessions/${sessionManager.currentSession}/gameState`);
-        sessionRef.update({
+async function updateGameStateInFirestore() {
+    if (firebaseReady && firestore && sessionManager.currentSession) {
+        try {
+            const sessionDoc = firestore.collection('sessions').doc(sessionManager.currentSession);
+            await sessionDoc.update({
+                'gameState.state': gameState.currentState,
+                'gameState.score': gameState.score,
+                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        } catch (error) {
+            console.error('Error updating game state in Firestore:', error);
+        }
+    } else if (sessionManager.currentSession) {
+        // Update localStorage
+        localStorage.setItem(`session_${sessionManager.currentSession}_state`, JSON.stringify({
             state: gameState.currentState,
             score: gameState.score
-        }).catch(error => {
-            console.error('Error updating game state in Firebase:', error);
-        });
+        }));
     }
 }
 
@@ -758,14 +779,20 @@ function setupMobileEventListeners() {
     // Center button for start/restart
     const centerBtn = document.getElementById('btn-center');
     if (centerBtn) {
-        centerBtn.addEventListener('click', () => sendGameAction('start_restart'));
+        centerBtn.addEventListener('click', function() {
+            if (!centerBtn.disabled) {
+                handleCenterButtonPress(centerBtn);
+            }
+        });
+        
         centerBtn.addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (!centerBtn.disabled) {
-                sendGameAction('start_restart');
+                handleCenterButtonPress(centerBtn);
                 centerBtn.classList.add('active');
             }
         });
+        
         centerBtn.addEventListener('touchend', (e) => {
             e.preventDefault();
             centerBtn.classList.remove('active');
@@ -773,45 +800,61 @@ function setupMobileEventListeners() {
     }
 }
 
+function handleCenterButtonPress(centerBtn) {
+    const currentIcon = centerBtn.querySelector('.center-icon').textContent;
+    if (currentIcon === '▶') { // Play
+        sendGameAction('start');
+    } else if (currentIcon === '↻') { // Restart
+        sendGameAction('restart');
+    }
+}
+
 function connectToSession(sessionCode) {
     console.log('Attempting to connect to session:', sessionCode);
     
-    if (firebaseReady && database) {
-        connectViaFirebase(sessionCode);
+    if (firebaseReady && firestore) {
+        connectViaFirestore(sessionCode);
     } else {
         connectViaLocalStorage(sessionCode);
     }
 }
 
-async function connectViaFirebase(sessionCode) {
+async function connectViaFirestore(sessionCode) {
     try {
-        const sessionRef = database.ref(`sessions/${sessionCode}`);
+        const sessionDoc = firestore.collection('sessions').doc(sessionCode);
         
-        sessionRef.once('value', (snapshot) => {
-            if (snapshot.exists()) {
-                sessionManager.connectedSession = sessionCode;
-                showControllerInterface();
-                showConnectionSuccess();
-                console.log('Connected to Firebase session:', sessionCode);
-                
-                // Listen for game state changes to enable/disable center button
-                sessionRef.child('gameState').on('value', (stateSnapshot) => {
-                    const gameStateData = stateSnapshot.val();
-                    if (gameStateData) {
-                        updateCenterButton(gameStateData.state);
+        // Check if session exists
+        const docSnapshot = await sessionDoc.get();
+        if (docSnapshot.exists) {
+            sessionManager.connectedSession = sessionCode;
+            showControllerInterface();
+            showConnectionSuccess();
+            console.log('Connected to Firestore session:', sessionCode);
+            
+            // Listen for game state changes to update center button
+            sessionManager.unsubscribe = sessionDoc.onSnapshot((doc) => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    if (data.gameState) {
+                        updateCenterButtonIcon(data.gameState.state);
                     }
-                });
-                
-                // Initial center button state
-                updateCenterButton(GameState.WAITING_FOR_START);
-                
+                }
+            });
+            
+            // Initial center button state
+            const data = docSnapshot.data();
+            if (data.gameState) {
+                updateCenterButtonIcon(data.gameState.state);
             } else {
-                showConnectionError('Session not found. Make sure the game is running on desktop.');
+                updateCenterButtonIcon(GameState.WAITING_FOR_START);
             }
-        });
+            
+        } else {
+            showConnectionError('Session not found. Make sure the game is running on desktop.');
+        }
         
     } catch (error) {
-        console.error('Firebase connection error:', error);
+        console.error('Firestore connection error:', error);
         connectViaLocalStorage(sessionCode);
     }
 }
@@ -825,8 +868,20 @@ function connectViaLocalStorage(sessionCode) {
         showConnectionSuccess();
         console.log('Connected to localStorage session:', sessionCode);
         
-        // For localStorage, assume we can always start
-        updateCenterButton(GameState.WAITING_FOR_START);
+        // Get initial game state
+        const gameStateStr = localStorage.getItem(`session_${sessionCode}_state`);
+        const gameStateData = gameStateStr ? JSON.parse(gameStateStr) : { state: GameState.WAITING_FOR_START };
+        updateCenterButtonIcon(gameStateData.state);
+        
+        // Listen for localStorage changes for game state updates
+        window.addEventListener('storage', function(e) {
+            if (e.key === `session_${sessionCode}_state`) {
+                const data = JSON.parse(e.newValue || '{}');
+                if (data.state) {
+                    updateCenterButtonIcon(data.state);
+                }
+            }
+        });
         
     } else {
         showConnectionError('Session not found. Make sure the game is running on desktop.');
@@ -859,22 +914,30 @@ function showConnectionError(message) {
     }
 }
 
-function updateCenterButton(currentState) {
+function updateCenterButtonIcon(currentState) {
     const centerBtn = document.getElementById('btn-center');
     if (!centerBtn) return;
     
-    const btnLabel = centerBtn.querySelector('.btn-label');
+    const btnIcon = centerBtn.querySelector('.center-icon');
+    
+    // Remove all state classes
+    centerBtn.classList.remove('ready', 'playing', 'restart');
     
     if (currentState === GameState.WAITING_FOR_START) {
         centerBtn.disabled = false;
-        if (btnLabel) btnLabel.textContent = 'START';
+        centerBtn.classList.add('ready');
+        if (btnIcon) btnIcon.textContent = '▶'; // Play icon
     } else if (currentState === GameState.GAME_OVER) {
         centerBtn.disabled = false;
-        if (btnLabel) btnLabel.textContent = 'RESTART';
-    } else {
+        centerBtn.classList.add('restart');
+        if (btnIcon) btnIcon.textContent = '↻'; // Restart icon
+    } else if (currentState === GameState.PLAYING) {
         centerBtn.disabled = true;
-        if (btnLabel) btnLabel.textContent = 'PLAYING';
+        centerBtn.classList.add('playing');
+        if (btnIcon) btnIcon.textContent = '🐍'; // Snake emoji
     }
+    
+    console.log('Center button updated for state:', currentState);
 }
 
 function sendDirection(direction) {
@@ -885,8 +948,8 @@ function sendDirection(direction) {
     
     console.log('Sending direction:', direction);
     
-    if (firebaseReady && database) {
-        sendDirectionFirebase(direction);
+    if (firebaseReady && firestore) {
+        sendDirectionFirestore(direction);
     } else {
         sendDirectionLocalStorage(direction);
     }
@@ -905,42 +968,41 @@ function sendGameAction(action) {
         return;
     }
     
-    const actionToSend = action === 'start_restart' ? 'start' : action;
-    console.log('Sending game action:', actionToSend);
+    console.log('Sending game action:', action);
     
-    if (firebaseReady && database) {
-        sendGameActionFirebase(actionToSend);
+    if (firebaseReady && firestore) {
+        sendGameActionFirestore(action);
     } else {
-        sendGameActionLocalStorage(actionToSend);
+        sendGameActionLocalStorage(action);
     }
 }
 
-async function sendDirectionFirebase(direction) {
+async function sendDirectionFirestore(direction) {
     try {
-        const sessionRef = database.ref(`sessions/${sessionManager.connectedSession}`);
-        await sessionRef.update({
+        const sessionDoc = firestore.collection('sessions').doc(sessionManager.connectedSession);
+        await sessionDoc.update({
             connected: true,
             lastDirection: direction,
-            timestamp: Date.now()
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
-        console.log('Direction sent via Firebase:', direction);
+        console.log('Direction sent via Firestore:', direction);
     } catch (error) {
-        console.error('Error sending direction to Firebase:', error);
+        console.error('Error sending direction to Firestore:', error);
         sendDirectionLocalStorage(direction);
     }
 }
 
-async function sendGameActionFirebase(action) {
+async function sendGameActionFirestore(action) {
     try {
-        const sessionRef = database.ref(`sessions/${sessionManager.connectedSession}`);
-        await sessionRef.update({
+        const sessionDoc = firestore.collection('sessions').doc(sessionManager.connectedSession);
+        await sessionDoc.update({
             connected: true,
             gameAction: action,
-            timestamp: Date.now()
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
-        console.log('Game action sent via Firebase:', action);
+        console.log('Game action sent via Firestore:', action);
     } catch (error) {
-        console.error('Error sending game action to Firebase:', error);
+        console.error('Error sending game action to Firestore:', error);
         sendGameActionLocalStorage(action);
     }
 }
@@ -964,3 +1026,10 @@ function sendGameActionLocalStorage(action) {
     localStorage.setItem(`session_${sessionManager.connectedSession}`, JSON.stringify(sessionData));
     console.log('Game action sent via localStorage:', action);
 }
+
+// Cleanup function for when page is closed
+window.addEventListener('beforeunload', function() {
+    if (sessionManager.unsubscribe) {
+        sessionManager.unsubscribe();
+    }
+});

@@ -6,9 +6,9 @@
     <title>Snake Game - Cross Device Controller</title>
     <link rel="stylesheet" href="style.css">
     
-    <!-- Firebase CDN -->
+    <!-- Firebase CDN - Updated for Firestore -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     
     <!-- Different QR Code Libraries - Try multiple sources -->
     <script src="https://unpkg.com/qrious@4.0.2/dist/qrious.min.js"></script>
@@ -86,13 +86,13 @@
 
     <!-- Mobile Controller View -->
     <div id="mobile-view" class="mobile-view">
-        <div class="mobile-container">
+        <!-- Connection Form -->
+        <div id="connection-form" class="connection-form">
             <div class="mobile-header">
                 <h1 class="mobile-title">Snake Controller</h1>
             </div>
             
-            <!-- Connection Form -->
-            <div id="connection-form" class="connection-form">
+            <div class="connection-card">
                 <div class="input-group">
                     <label for="session-input">Enter 6-digit session code:</label>
                     <input type="text" id="session-input" maxlength="6" placeholder="123456" pattern="[0-9]{6}">
@@ -101,54 +101,38 @@
                 <button id="connect-btn" class="btn btn-connect">Connect to Game</button>
                 <div id="mobile-connection-status" class="connection-status"></div>
             </div>
-            
-            <!-- Controller Interface -->
-            <div id="controller-interface" class="controller-interface">
-                <!-- Remote-style Controller Layout -->
-                <div class="remote-controller">
-                    <!-- Up Button -->
-                    <div class="remote-row top-row">
-                        <button id="btn-up" class="direction-btn remote-btn up-btn">
-                            <div class="btn-content">
-                                <span class="arrow">▲</span>
-                                <span class="btn-label">UP</span>
-                            </div>
-                        </button>
-                    </div>
+        </div>
+        
+        <!-- Controller Interface - Full Screen -->
+        <div id="controller-interface" class="controller-interface">
+            <div class="controller-grid">
+                <!-- Top Row - Up Button -->
+                <div class="control-row top-row">
+                    <button id="btn-up" class="control-btn direction-btn">
+                        <span class="arrow">▲</span>
+                    </button>
+                </div>
+                
+                <!-- Middle Row - Left, Center, Right -->
+                <div class="control-row middle-row">
+                    <button id="btn-left" class="control-btn direction-btn">
+                        <span class="arrow">◀</span>
+                    </button>
                     
-                    <!-- Middle Row - Left, Center, Right -->
-                    <div class="remote-row middle-row">
-                        <button id="btn-left" class="direction-btn remote-btn left-btn">
-                            <div class="btn-content">
-                                <span class="arrow">◀</span>
-                                <span class="btn-label">LEFT</span>
-                            </div>
-                        </button>
-                        
-                        <button id="btn-center" class="center-btn" disabled>
-                            <div class="btn-content">
-                                <span class="center-icon">●</span>
-                                <span class="btn-label">START</span>
-                            </div>
-                        </button>
-                        
-                        <button id="btn-right" class="direction-btn remote-btn right-btn">
-                            <div class="btn-content">
-                                <span class="arrow">▶</span>
-                                <span class="btn-label">RIGHT</span>
-                            </div>
-                        </button>
-                    </div>
+                    <button id="btn-center" class="control-btn center-btn" disabled>
+                        <span class="center-icon">▶</span>
+                    </button>
                     
-                    <!-- Down Button -->
-                    <div class="remote-row bottom-row">
-                        <button id="btn-down" class="direction-btn remote-btn down-btn">
-                            <div class="btn-content">
-                                <span class="arrow">▼</span>
-                                <span class="btn-label">DOWN</span>
-                            </div>
-                        </button>
-                    </div>
+                    <button id="btn-right" class="control-btn direction-btn">
+                        <span class="arrow">▶</span>
+                    </button>
+                </div>
+                
+                <!-- Bottom Row - Down Button -->
+                <div class="control-row bottom-row">
+                    <button id="btn-down" class="control-btn direction-btn">
+                        <span class="arrow">▼</span>
+                    </button>
                 </div>
             </div>
         </div>
