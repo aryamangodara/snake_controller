@@ -10,9 +10,9 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     
-    <!-- QR Code Library - Multiple CDN fallbacks -->
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" 
-            onerror="this.onerror=null; this.src='https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js'"></script>
+    <!-- Different QR Code Libraries - Try multiple sources -->
+    <script src="https://unpkg.com/qrious@4.0.2/dist/qrious.min.js"></script>
+    <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
     
     <!-- Font Awesome for social icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -49,7 +49,10 @@
                             <span id="session-code" class="code-value">123456</span>
                         </div>
                         <div class="qr-container">
-                            <canvas id="qr-code" width="150" height="150"></canvas>
+                            <div id="qr-code-container">
+                                <canvas id="qr-canvas" width="150" height="150"></canvas>
+                                <div id="qr-code-div"></div>
+                            </div>
                             <div id="qr-loading" class="qr-loading">
                                 <div class="loading-spinner"></div>
                                 <p>Generating QR Code...</p>
@@ -104,7 +107,7 @@
                 <div id="mobile-connection-status" class="connection-status"></div>
             </div>
             
-            <!-- Controller Interface -->
+            <!-- Controller Interface - Remote Style -->
             <div id="controller-interface" class="controller-interface">
                 <div class="connection-info">
                     <div class="connection-indicator connected">
@@ -113,30 +116,52 @@
                     </div>
                 </div>
                 
-                <div class="controller-grid">
+                <!-- Remote-style Controller Layout -->
+                <div class="remote-controller">
                     <!-- Up Button -->
-                    <div class="controller-row">
-                        <button id="btn-up" class="direction-btn up-btn">
-                            <span class="arrow">↑</span>
+                    <div class="remote-row top-row">
+                        <button id="btn-up" class="direction-btn remote-btn up-btn">
+                            <div class="btn-content">
+                                <span class="arrow">▲</span>
+                                <span class="btn-label">UP</span>
+                            </div>
                         </button>
                     </div>
                     
-                    <!-- Left, Down, Right Buttons -->
-                    <div class="controller-row">
-                        <button id="btn-left" class="direction-btn left-btn">
-                            <span class="arrow">←</span>
+                    <!-- Middle Row - Left and Right -->
+                    <div class="remote-row middle-row">
+                        <button id="btn-left" class="direction-btn remote-btn left-btn">
+                            <div class="btn-content">
+                                <span class="arrow">◀</span>
+                                <span class="btn-label">LEFT</span>
+                            </div>
                         </button>
-                        <button id="btn-down" class="direction-btn down-btn">
-                            <span class="arrow">↓</span>
+                        
+                        <div class="center-space">
+                            <div class="center-dot"></div>
+                        </div>
+                        
+                        <button id="btn-right" class="direction-btn remote-btn right-btn">
+                            <div class="btn-content">
+                                <span class="arrow">▶</span>
+                                <span class="btn-label">RIGHT</span>
+                            </div>
                         </button>
-                        <button id="btn-right" class="direction-btn right-btn">
-                            <span class="arrow">→</span>
+                    </div>
+                    
+                    <!-- Down Button -->
+                    <div class="remote-row bottom-row">
+                        <button id="btn-down" class="direction-btn remote-btn down-btn">
+                            <div class="btn-content">
+                                <span class="arrow">▼</span>
+                                <span class="btn-label">DOWN</span>
+                            </div>
                         </button>
                     </div>
                 </div>
                 
                 <div class="controller-instructions">
-                    <p>Use the arrow buttons to control the snake</p>
+                    <p>Use the remote buttons to control the snake</p>
                     <p>Score updates in real-time on the desktop</p>
                 </div>
             </div>

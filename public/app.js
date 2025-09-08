@@ -14,34 +14,7 @@ const firebaseConfig = {
 let app, database;
 let firebaseReady = false;
 
-// QR Code library loading
-let qrLibraryReady = false;
-let qrLoadAttempts = 0;
-const maxQrLoadAttempts = 5;
-
-// Check for QRCode library availability
-function checkQRCodeLibrary() {
-    if (typeof QRCode !== 'undefined') {
-        qrLibraryReady = true;
-        console.log('QRCode library loaded successfully');
-        return true;
-    }
-    
-    qrLoadAttempts++;
-    if (qrLoadAttempts < maxQrLoadAttempts) {
-        console.log(`QRCode library not ready, attempt ${qrLoadAttempts}/${maxQrLoadAttempts}`);
-        setTimeout(checkQRCodeLibrary, 1000);
-    } else {
-        console.warn('QRCode library failed to load after multiple attempts');
-        qrLibraryReady = false;
-    }
-    return false;
-}
-
-// Start checking for QR library
-setTimeout(checkQRCodeLibrary, 500);
-
-// Wait for Firebase to be ready
+// Initialize Firebase when DOM is ready or Firebase is loaded
 function initializeFirebase() {
     try {
         if (typeof firebase === 'undefined') {
@@ -60,11 +33,10 @@ function initializeFirebase() {
     }
 }
 
-// Initialize Firebase when DOM is ready or Firebase is loaded
+// Initialize Firebase
 if (typeof firebase !== 'undefined') {
     initializeFirebase();
 } else {
-    // Wait for Firebase to load
     setTimeout(initializeFirebase, 2000);
 }
 
@@ -80,6 +52,7 @@ const gameConfig = {
 const colors = {
     background: "#0a0a0a",
     snake: "#00ff00",
+    snakeHead: "#00ff00",
     food: "#ff0000",
     border: "#333333",
     text: "#ffffff",
@@ -90,11 +63,25 @@ const colors = {
 const GRID_WIDTH = Math.floor(gameConfig.boardSize.width / gameConfig.gridSize);
 const GRID_HEIGHT = Math.floor(gameConfig.boardSize.height / gameConfig.gridSize);
 
+// Create initial snake with length of 5, positioned vertically and pointing up
+function createInitialSnake() {
+    const centerX = Math.floor(GRID_WIDTH / 2);
+    const centerY = Math.floor(GRID_HEIGHT / 2);
+    
+    return [
+        { x: centerX, y: centerY },     // Head
+        { x: centerX, y: centerY + 1 }, // Body segment 1
+        { x: centerX, y: centerY + 2 }, // Body segment 2
+        { x: centerX, y: centerY + 3 }, // Body segment 3
+        { x: centerX, y: centerY + 4 }  // Tail
+    ];
+}
+
 // Global game state
 let gameState = {
-    snake: [{ x: Math.floor(GRID_WIDTH / 2), y: Math.floor(GRID_HEIGHT / 2) }],
-    direction: { x: 0, y: 0 },
-    nextDirection: { x: 0, y: 0 },
+    snake: createInitialSnake(),
+    direction: { x: 0, y: -1 }, // Start moving upward
+    nextDirection: { x: 0, y: -1 }, // Default direction upward
     food: { x: Math.floor(GRID_WIDTH / 4), y: Math.floor(GRID_HEIGHT / 4) },
     score: 0,
     gameRunning: false,
@@ -118,8 +105,8 @@ let gameLoop;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing app...');
     detectDevice();
-    // Wait a bit for libraries to load
-    setTimeout(initializeApp, 1500);
+    // Wait for libraries to load
+    setTimeout(initializeApp, 1000);
 });
 
 function detectDevice() {
@@ -260,71 +247,93 @@ function setupLocalStorageSession(sessionCode) {
 function generateQRCode(sessionCode) {
     console.log('Generating QR code for session:', sessionCode);
     
-    const qrCanvas = document.getElementById('qr-code');
+    const qrContainer = document.getElementById('qr-code-container');
+    const qrCanvas = document.getElementById('qr-canvas');
+    const qrDiv = document.getElementById('qr-code-div');
     const qrLoading = document.getElementById('qr-loading');
     
-    if (!qrCanvas) {
-        console.error('QR canvas not found!');
+    if (!qrContainer) {
+        console.error('QR container not found!');
         return;
     }
     
     // Show loading state
-    if (qrLoading) {
-        qrLoading.style.display = 'block';
-    }
-    qrCanvas.style.display = 'none';
+    if (qrLoading) qrLoading.style.display = 'flex';
+    if (qrContainer) qrContainer.style.display = 'none';
     
     const gameUrl = `${window.location.origin}${window.location.pathname}?session=${sessionCode}`;
     console.log('QR URL:', gameUrl);
     
-    // Function to try generating QR code
-    function tryGenerateQR() {
-        if (qrLibraryReady && typeof QRCode !== 'undefined') {
-            try {
-                QRCode.toCanvas(qrCanvas, gameUrl, {
-                    width: 150,
-                    margin: 2,
-                    color: {
-                        dark: '#00ffff',
-                        light: '#ffffff'
-                    }
-                }, function(error) {
-                    if (qrLoading) qrLoading.style.display = 'none';
-                    
-                    if (error) {
-                        console.error('QR Code generation error:', error);
-                        drawPlaceholderQR(qrCanvas, sessionCode);
-                    } else {
-                        console.log('QR code generated successfully');
-                        qrCanvas.style.display = 'block';
-                    }
-                });
-            } catch (error) {
-                console.error('QRCode execution error:', error);
-                if (qrLoading) qrLoading.style.display = 'none';
-                drawPlaceholderQR(qrCanvas, sessionCode);
-                qrCanvas.style.display = 'block';
-            }
-        } else {
-            // Check again after a delay
-            setTimeout(() => {
-                if (qrLibraryReady && typeof QRCode !== 'undefined') {
-                    tryGenerateQR();
-                } else {
-                    console.warn('QRCode library still not loaded, showing placeholder');
-                    if (qrLoading) qrLoading.style.display = 'none';
-                    drawPlaceholderQR(qrCanvas, sessionCode);
-                    qrCanvas.style.display = 'block';
-                }
-            }, 2000);
+    let qrGenerated = false;
+    
+    // Try QRious library first
+    if (typeof QRious !== 'undefined' && !qrGenerated) {
+        try {
+            console.log('Trying QRious library...');
+            const qr = new QRious({
+                element: qrCanvas,
+                value: gameUrl,
+                size: 150,
+                foreground: '#00ffff',
+                background: '#ffffff'
+            });
+            
+            qrGenerated = true;
+            console.log('QR code generated successfully with QRious');
+            
+            if (qrLoading) qrLoading.style.display = 'none';
+            if (qrContainer) qrContainer.style.display = 'block';
+            
+        } catch (error) {
+            console.error('QRious failed:', error);
         }
     }
     
-    // Start trying to generate QR code
-    tryGenerateQR();
+    // Try QRCode.js library
+    if (typeof QRCode !== 'undefined' && !qrGenerated) {
+        try {
+            console.log('Trying QRCode.js library...');
+            
+            // Clear the div first
+            qrDiv.innerHTML = '';
+            
+            const qr = new QRCode(qrDiv, {
+                text: gameUrl,
+                width: 150,
+                height: 150,
+                colorDark: '#00ffff',
+                colorLight: '#ffffff'
+            });
+            
+            qrGenerated = true;
+            console.log('QR code generated successfully with QRCode.js');
+            
+            if (qrLoading) qrLoading.style.display = 'none';
+            if (qrContainer) qrContainer.style.display = 'block';
+            
+            // Hide the canvas since we're using the div
+            if (qrCanvas) qrCanvas.style.display = 'none';
+            
+        } catch (error) {
+            console.error('QRCode.js failed:', error);
+        }
+    }
+    
+    // Fallback to placeholder
+    if (!qrGenerated) {
+        console.log('All QR libraries failed, using placeholder');
+        setTimeout(() => {
+            drawPlaceholderQR(qrCanvas, sessionCode);
+            if (qrLoading) qrLoading.style.display = 'none';
+            if (qrContainer) qrContainer.style.display = 'block';
+            if (qrDiv) qrDiv.style.display = 'none';
+        }, 1000);
+    }
 }
 
 function drawPlaceholderQR(canvas, sessionCode) {
+    if (!canvas) return;
+    
     const ctx = canvas.getContext('2d');
     
     // Clear canvas
@@ -333,41 +342,49 @@ function drawPlaceholderQR(canvas, sessionCode) {
     
     // Draw border
     ctx.strokeStyle = '#00ffff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(2, 2, 146, 146);
+    ctx.lineWidth = 3;
+    ctx.strokeRect(5, 5, 140, 140);
     
     // QR pattern simulation (corners)
     ctx.fillStyle = '#000000';
     
     // Top-left corner
-    ctx.fillRect(10, 10, 30, 30);
+    ctx.fillRect(15, 15, 25, 25);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(15, 15, 20, 20);
+    ctx.fillRect(20, 20, 15, 15);
     ctx.fillStyle = '#000000';
-    ctx.fillRect(20, 20, 10, 10);
+    ctx.fillRect(23, 23, 9, 9);
     
     // Top-right corner
-    ctx.fillRect(110, 10, 30, 30);
+    ctx.fillRect(110, 15, 25, 25);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(115, 15, 20, 20);
+    ctx.fillRect(115, 20, 15, 15);
     ctx.fillStyle = '#000000';
-    ctx.fillRect(120, 20, 10, 10);
+    ctx.fillRect(118, 23, 9, 9);
     
     // Bottom-left corner
-    ctx.fillRect(10, 110, 30, 30);
+    ctx.fillRect(15, 110, 25, 25);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(15, 115, 20, 120);
+    ctx.fillRect(20, 115, 15, 15);
     ctx.fillStyle = '#000000';
-    ctx.fillRect(20, 120, 10, 10);
+    ctx.fillRect(23, 118, 9, 9);
+    
+    // Random pattern in middle
+    ctx.fillStyle = '#000000';
+    for (let i = 0; i < 20; i++) {
+        const x = Math.floor(Math.random() * 100) + 25;
+        const y = Math.floor(Math.random() * 100) + 25;
+        ctx.fillRect(x, y, 3, 3);
+    }
     
     // Center text
     ctx.fillStyle = '#00ffff';
-    ctx.font = 'bold 12px Arial';
+    ctx.font = 'bold 10px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('QR CODE', 75, 70);
-    ctx.font = '10px Arial';
-    ctx.fillText(`Session: ${sessionCode}`, 75, 85);
-    ctx.fillText('Scan or enter code', 75, 100);
+    ctx.fillText('SCAN QR', 75, 60);
+    ctx.font = '8px Arial';
+    ctx.fillText(`Code: ${sessionCode}`, 75, 75);
+    ctx.fillText('or enter code', 75, 87);
 }
 
 function handleDirectionFromMobile(direction) {
@@ -494,6 +511,45 @@ function generateFood() {
     gameState.food = foodPosition;
 }
 
+// Draw arrow head pointing in the direction of movement
+function drawArrowHead(ctx, x, y, direction, size) {
+    const centerX = x + size / 2;
+    const centerY = y + size / 2;
+    
+    ctx.fillStyle = colors.snakeHead;
+    ctx.beginPath();
+    
+    // Create arrow shape based on direction
+    if (direction.x === 0 && direction.y === -1) { // Up
+        ctx.moveTo(centerX, y + 2);
+        ctx.lineTo(x + 2, y + size - 2);
+        ctx.lineTo(x + size - 2, y + size - 2);
+    } else if (direction.x === 0 && direction.y === 1) { // Down
+        ctx.moveTo(centerX, y + size - 2);
+        ctx.lineTo(x + 2, y + 2);
+        ctx.lineTo(x + size - 2, y + 2);
+    } else if (direction.x === -1 && direction.y === 0) { // Left
+        ctx.moveTo(x + 2, centerY);
+        ctx.lineTo(x + size - 2, y + 2);
+        ctx.lineTo(x + size - 2, y + size - 2);
+    } else if (direction.x === 1 && direction.y === 0) { // Right
+        ctx.moveTo(x + size - 2, centerY);
+        ctx.lineTo(x + 2, y + 2);
+        ctx.lineTo(x + 2, y + size - 2);
+    } else {
+        // Default case - draw regular square if no direction
+        ctx.rect(x + 1, y + 1, size - 2, size - 2);
+    }
+    
+    ctx.closePath();
+    ctx.fill();
+    
+    // Add a border to make it stand out
+    ctx.strokeStyle = '#00cc00';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
 function renderGame() {
     if (!ctx) return;
     
@@ -501,14 +557,27 @@ function renderGame() {
     ctx.fillStyle = colors.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Draw snake
+    // Draw snake body segments (skip head)
     ctx.fillStyle = colors.snake;
-    for (let segment of gameState.snake) {
+    for (let i = 1; i < gameState.snake.length; i++) {
+        const segment = gameState.snake[i];
         ctx.fillRect(
             segment.x * gameConfig.gridSize + 1,
             segment.y * gameConfig.gridSize + 1,
             gameConfig.gridSize - 2,
             gameConfig.gridSize - 2
+        );
+    }
+    
+    // Draw snake head as arrow
+    if (gameState.snake.length > 0) {
+        const head = gameState.snake[0];
+        drawArrowHead(
+            ctx, 
+            head.x * gameConfig.gridSize, 
+            head.y * gameConfig.gridSize, 
+            gameState.direction, 
+            gameConfig.gridSize
         );
     }
     
@@ -555,9 +624,9 @@ function restartGame() {
     console.log('Restarting game...');
     
     gameState = {
-        snake: [{ x: Math.floor(GRID_WIDTH / 2), y: Math.floor(GRID_HEIGHT / 2) }],
-        direction: { x: 0, y: 0 },
-        nextDirection: { x: 0, y: 0 },
+        snake: createInitialSnake(),
+        direction: { x: 0, y: -1 }, // Reset to upward direction
+        nextDirection: { x: 0, y: -1 },
         food: { x: Math.floor(GRID_WIDTH / 4), y: Math.floor(GRID_HEIGHT / 4) },
         score: 0,
         gameRunning: false,
@@ -581,7 +650,6 @@ function initializeMobileController() {
         const sessionInput = document.getElementById('session-input');
         if (sessionInput) {
             sessionInput.value = sessionFromUrl;
-            // Auto-connect after a short delay
             setTimeout(() => connectToSession(sessionFromUrl), 1000);
         }
     }
@@ -717,7 +785,7 @@ function sendDirection(direction) {
     const btn = document.getElementById(`btn-${direction}`);
     if (btn) {
         btn.classList.add('pressed');
-        setTimeout(() => btn.classList.remove('pressed'), 150);
+        setTimeout(() => btn.classList.remove('pressed'), 200);
     }
 }
 
@@ -732,7 +800,6 @@ async function sendDirectionFirebase(direction) {
         console.log('Direction sent via Firebase:', direction);
     } catch (error) {
         console.error('Error sending direction to Firebase:', error);
-        // Fallback to localStorage
         sendDirectionLocalStorage(direction);
     }
 }
