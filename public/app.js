@@ -10,11 +10,10 @@ const firebaseConfig = {
     measurementId: "G-0DFSB38H21"
 };
 
-// Initialize Firebase with Firestore
-let app, firestore;
+// Initialize Firebase with HYBRID approach: Realtime Database + Firestore
+let app, database, firestore;
 let firebaseReady = false;
 
-// Initialize Firebase when DOM is ready or Firebase is loaded
 function initializeFirebase() {
     try {
         if (typeof firebase === 'undefined') {
@@ -24,75 +23,82 @@ function initializeFirebase() {
         }
         
         app = firebase.initializeApp(firebaseConfig);
+        // Realtime Database for joystick input (FREE - unlimited operations)
+        database = firebase.database();
+        // Firestore only for session management (minimal operations)
         firestore = firebase.firestore();
         firebaseReady = true;
-        console.log('Firebase with Firestore initialized successfully');
+        console.log('🚀 Firebase initialized: Realtime DB + Firestore hybrid');
     } catch (error) {
         console.warn('Firebase initialization failed:', error);
-        console.log('Running in offline mode');
+        console.log('Running in offline mode with localStorage');
     }
 }
 
-// Initialize Firebase
 if (typeof firebase !== 'undefined') {
     initializeFirebase();
 } else {
     setTimeout(initializeFirebase, 2000);
 }
 
-// Game configuration - Improved for better gameplay
+// Game configuration - Enhanced for constant movement
 const gameConfig = {
     boardSize: { width: 600, height: 600 },
     snakeSegmentSize: 12,
     foodSize: 8,
-    initialSpeed: 2.5, // Increased speed as requested
-    speedIncrease: 0.15,
-    maxSpeed: 6,
-    turnSpeed: 0.1, // Slightly faster turning
-    segmentSpacing: 15, // Consistent segment spacing
+    baseSpeed: 2.0, // CONSTANT minimum speed - snake never stops
+    maxSpeedBoost: 1.5, // Additional speed when joystick is pushed fully
+    speedIncrease: 0.1, // Speed increase per food
+    maxSpeed: 5,
+    turnSpeed: 0.08, // Smooth turning
+    segmentSpacing: 15,
     wallMargin: 20,
-    minSelfCollisionSegments: 8 // Skip more segments for collision
+    minSelfCollisionSegments: 8,
+    // Optimization settings
+    joystickThrottleMs: 50, // 20 updates per second max
+    movementUpdateMs: 25, // 40 FPS movement updates
+    // Connection settings
+    connectionRetries: 5,
+    retryDelayMs: 2000,
 };
 
-// Updated colors for the new synthwave aesthetic
 const colors = {
     background: "#0a0a0a",
-    snake: "#ff1493",        // Hot pink for snake body
-    snakeHead: "#ff6b35",    // Orange for snake head  
-    food: "#7209b7",         // Purple for food
+    snake: "#ff1493",
+    snakeHead: "#ff6b35",
+    food: "#7209b7",
     border: "#333333",
     text: "#ffffff",
     accent: "#ff1493"
 };
 
-// Create initial snake with better spacing
 function createInitialSnake() {
     const centerX = gameConfig.boardSize.width / 2;
     const centerY = gameConfig.boardSize.height / 2;
     const spacing = gameConfig.segmentSpacing;
     
     return [
-        { x: centerX, y: centerY },                    // Head
-        { x: centerX - spacing, y: centerY },          // Segment 1
-        { x: centerX - spacing * 2, y: centerY },      // Segment 2
-        { x: centerX - spacing * 3, y: centerY },      // Segment 3
-        { x: centerX - spacing * 4, y: centerY }       // Tail
+        { x: centerX, y: centerY },
+        { x: centerX - spacing, y: centerY },
+        { x: centerX - spacing * 2, y: centerY },
+        { x: centerX - spacing * 3, y: centerY },
+        { x: centerX - spacing * 4, y: centerY }
     ];
 }
 
-// Game states
 const GameState = {
     WAITING_FOR_START: 'waiting_for_start',
     PLAYING: 'playing',
     GAME_OVER: 'game_over'
 };
 
-// Global game state
+// Global game state - Enhanced for constant movement
 let gameState = {
     snake: createInitialSnake(),
-    direction: 0, // Radians
-    targetDirection: 0,
-    speed: gameConfig.initialSpeed,
+    direction: 0, // Current movement direction
+    targetDirection: 0, // Target direction from joystick
+    baseSpeed: gameConfig.baseSpeed, // Always moving at this minimum speed
+    currentSpeed: gameConfig.baseSpeed, // Current total speed
     food: { 
         x: gameConfig.boardSize.width * 0.75, 
         y: gameConfig.boardSize.height * 0.25 
@@ -100,32 +106,36 @@ let gameState = {
     score: 0,
     gameRunning: false,
     lastUpdateTime: 0,
+    lastMoveTime: 0, // For consistent movement timing
     currentState: GameState.WAITING_FOR_START,
     joystickInput: { x: 0, y: 0 },
-    isMoving: false,
     frameCount: 0
 };
 
-// Session management
+// Enhanced session management with better error handling
 let sessionManager = {
     currentSession: null,
     isDesktop: true,
     connectedSession: null,
     firebaseConnected: false,
-    unsubscribe: null
+    realtimeRef: null,
+    firestoreUnsubscribe: null,
+    lastJoystickUpdate: 0,
+    connectionType: 'hybrid', // hybrid, localStorage
+    sessionReady: false, // Track if session is fully ready
+    connectionRetries: 0
 };
 
-// Canvas and game elements
-let canvas, ctx;
-let gameLoop;
+let canvas, ctx, gameLoop;
 
-// Joystick state for mobile
+// Joystick state for mobile with throttling
 let joystickState = {
     isDragging: false,
     baseElement: null,
     handleElement: null,
     baseRect: null,
-    maxDistance: 0
+    maxDistance: 0,
+    lastInputTime: 0
 };
 
 // Initialize the application
@@ -139,7 +149,7 @@ function detectDevice() {
     const isMobile = window.innerWidth <= 768;
     sessionManager.isDesktop = !isMobile;
     
-    console.log('Device detected:', sessionManager.isDesktop ? 'Desktop' : 'Mobile', 'Width:', window.innerWidth);
+    console.log('Device detected:', sessionManager.isDesktop ? 'Desktop' : 'Mobile');
     
     const desktopView = document.getElementById('desktop-view');
     const mobileView = document.getElementById('mobile-view');
@@ -175,8 +185,6 @@ function initializeDesktopGame() {
     canvas.width = gameConfig.boardSize.width;
     canvas.height = gameConfig.boardSize.height;
     
-    console.log('Canvas initialized:', canvas.width, 'x', canvas.height);
-    
     generateNewSession();
     startGameLoop();
 }
@@ -185,7 +193,7 @@ function generateNewSession() {
     const sessionCode = Math.floor(100000 + Math.random() * 900000).toString();
     sessionManager.currentSession = sessionCode;
     
-    console.log('Generated session code:', sessionCode);
+    console.log('🎮 Generated session code:', sessionCode);
     
     const sessionCodeElement = document.getElementById('session-code');
     if (sessionCodeElement) {
@@ -194,99 +202,169 @@ function generateNewSession() {
     
     generateQRCode(sessionCode);
     
-    if (firebaseReady && firestore) {
-        setupFirestoreSession(sessionCode);
+    if (firebaseReady) {
+        setupRobustHybridSession(sessionCode);
     } else {
         setupLocalStorageSession(sessionCode);
     }
 }
 
-async function setupFirestoreSession(sessionCode) {
+// ROBUST HYBRID SESSION with better error handling
+async function setupRobustHybridSession(sessionCode) {
     try {
+        sessionManager.connectionType = 'hybrid';
+        console.log('🔥 Setting up robust hybrid session...');
+        
+        // Wait for Firestore to be ready
+        await waitForFirebaseReady();
+        
+        // 1. Create session in Firestore with detailed logging
         const sessionDoc = firestore.collection('sessions').doc(sessionCode);
         
+        console.log('📝 Creating session document in Firestore...');
         await sessionDoc.set({
             created: firebase.firestore.FieldValue.serverTimestamp(),
             connected: false,
-            joystickInput: { x: 0, y: 0 },
-            gameAction: null,
             gameState: {
                 active: true,
                 score: 0,
                 state: GameState.WAITING_FOR_START
+            },
+            lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
+            version: Date.now() // Add version for debugging
+        });
+        
+        console.log('✅ Session document created successfully in Firestore');
+        
+        // 2. Verify session was created by reading it back
+        const verification = await sessionDoc.get();
+        if (!verification.exists) {
+            throw new Error('Session verification failed - document not found after creation');
+        }
+        console.log('✅ Session verified in Firestore:', verification.data());
+        
+        // 3. Set up Realtime Database path
+        sessionManager.realtimeRef = database.ref(`controllers/${sessionCode}`);
+        console.log('📡 Setting up Realtime Database path...');
+        
+        // Initialize Realtime Database path
+        await sessionManager.realtimeRef.set({
+            connected: false,
+            joystick: { x: 0, y: 0 },
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            initialized: true
+        });
+        console.log('✅ Realtime Database path initialized');
+        
+        // 4. Listen for Realtime Database changes
+        sessionManager.realtimeRef.on('value', (snapshot) => {
+            const controllerData = snapshot.val();
+            if (controllerData && controllerData.connected) {
+                handleJoystickInputFromMobile(controllerData.joystick || { x: 0, y: 0 });
+                updateConnectionStatus('Mobile controller connected ✅');
             }
         });
         
-        console.log('Session created in Firestore:', sessionCode);
-        sessionManager.firebaseConnected = true;
-        
-        sessionManager.unsubscribe = sessionDoc.onSnapshot((doc) => {
+        // 5. Listen to Firestore for game actions
+        sessionManager.firestoreUnsubscribe = sessionDoc.onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
-                if (data.connected) {
-                    if (data.joystickInput) {
-                        handleJoystickInputFromMobile(data.joystickInput);
-                    }
-                    if (data.gameAction) {
-                        console.log('Received game action from Firestore:', data.gameAction);
-                        handleGameActionFromMobile(data.gameAction);
-                        sessionDoc.update({ gameAction: null });
-                    }
+                if (data.gameAction) {
+                    console.log('📱 Game action received:', data.gameAction);
+                    handleGameActionFromMobile(data.gameAction);
+                    // Clear action immediately
+                    sessionDoc.update({ 
+                        gameAction: null,
+                        lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+                    }).catch(err => console.error('Error clearing game action:', err));
                 }
             }
         });
         
+        sessionManager.firebaseConnected = true;
+        sessionManager.sessionReady = true;
+        console.log('🚀 Hybrid session fully ready! Mobile can now connect.');
+        updateConnectionStatus('Waiting for mobile controller...');
+        
     } catch (error) {
-        console.error('Firestore error:', error);
+        console.error('❌ Hybrid session setup failed:', error);
+        console.log('🔄 Falling back to localStorage...');
         setupLocalStorageSession(sessionCode);
     }
 }
 
-function setupLocalStorageSession(sessionCode) {
-    console.log('Using localStorage for session:', sessionCode);
-    localStorage.setItem('currentSession', sessionCode);
-    localStorage.setItem(`session_${sessionCode}_state`, JSON.stringify({
-        state: GameState.WAITING_FOR_START,
-        score: 0
-    }));
-    
-    window.addEventListener('storage', function(e) {
-        if (e.key === `session_${sessionCode}`) {
-            const data = JSON.parse(e.newValue || '{}');
-            if (data.joystickInput) {
-                handleJoystickInputFromMobile(data.joystickInput);
-            }
-            if (data.gameAction) {
-                console.log('Received game action from localStorage:', data.gameAction);
-                handleGameActionFromMobile(data.gameAction);
-            }
+// Wait for Firebase to be ready
+function waitForFirebaseReady() {
+    return new Promise((resolve, reject) => {
+        if (firebaseReady && firestore) {
+            resolve();
+            return;
         }
+        
+        let attempts = 0;
+        const checkReady = () => {
+            attempts++;
+            if (firebaseReady && firestore) {
+                resolve();
+            } else if (attempts > 10) {
+                reject(new Error('Firebase initialization timeout'));
+            } else {
+                setTimeout(checkReady, 500);
+            }
+        };
+        
+        checkReady();
     });
 }
 
-function generateQRCode(sessionCode) {
-    console.log('Generating QR code for session:', sessionCode);
+function setupLocalStorageSession(sessionCode) {
+    console.log('📱 Using localStorage fallback for session:', sessionCode);
+    sessionManager.connectionType = 'localStorage';
     
+    localStorage.setItem('currentSession', sessionCode);
+    localStorage.setItem(`session_${sessionCode}_state`, JSON.stringify({
+        state: GameState.WAITING_FOR_START,
+        score: 0,
+        ready: true
+    }));
+    
+    // Listen for localStorage changes
+    window.addEventListener('storage', function(e) {
+        if (e.key === `session_${sessionCode}_joystick`) {
+            const data = JSON.parse(e.newValue || '{}');
+            if (data.joystick) {
+                handleJoystickInputFromMobile(data.joystick);
+                updateConnectionStatus('Mobile controller connected (localStorage) ✅');
+            }
+        } else if (e.key === `session_${sessionCode}_action`) {
+            const data = JSON.parse(e.newValue || '{}');
+            if (data.action) {
+                handleGameActionFromMobile(data.action);
+                localStorage.removeItem(`session_${sessionCode}_action`);
+            }
+        }
+    });
+    
+    sessionManager.sessionReady = true;
+    updateConnectionStatus('Waiting for mobile controller (localStorage mode)...');
+}
+
+function generateQRCode(sessionCode) {
     const qrContainer = document.getElementById('qr-code-container');
     const qrCanvas = document.getElementById('qr-canvas');
     const qrLoading = document.getElementById('qr-loading');
     
-    if (!qrContainer) {
-        console.error('QR container not found!');
-        return;
-    }
+    if (!qrContainer) return;
     
     if (qrLoading) qrLoading.style.display = 'flex';
     if (qrContainer) qrContainer.style.display = 'none';
     
     const gameUrl = `${window.location.origin}${window.location.pathname}?session=${sessionCode}`;
-    console.log('QR URL:', gameUrl);
     
     let qrGenerated = false;
     
-    if (typeof QRious !== 'undefined' && !qrGenerated) {
+    if (typeof QRious !== 'undefined') {
         try {
-            console.log('Trying QRious library...');
             const qr = new QRious({
                 element: qrCanvas,
                 value: gameUrl,
@@ -294,9 +372,7 @@ function generateQRCode(sessionCode) {
                 foreground: '#000000',
                 background: '#ffffff'
             });
-            
             qrGenerated = true;
-            console.log('QR code generated successfully with QRious');
             
             if (qrLoading) qrLoading.style.display = 'none';
             if (qrContainer) qrContainer.style.display = 'block';
@@ -307,7 +383,6 @@ function generateQRCode(sessionCode) {
     }
     
     if (!qrGenerated) {
-        console.log('QR libraries failed, using placeholder');
         setTimeout(() => {
             drawPlaceholderQR(qrCanvas, sessionCode);
             if (qrLoading) qrLoading.style.display = 'none';
@@ -320,20 +395,15 @@ function drawPlaceholderQR(canvas, sessionCode) {
     if (!canvas) return;
     
     const ctx = canvas.getContext('2d');
-    
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 150, 150);
-    
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     ctx.strokeRect(5, 5, 140, 140);
-    
     ctx.fillStyle = '#000000';
     
-    // QR corner patterns
-    [
-        [15, 15], [110, 15], [15, 110]
-    ].forEach(([x, y]) => {
+    // QR corners
+    [[15, 15], [110, 15], [15, 110]].forEach(([x, y]) => {
         ctx.fillRect(x, y, 25, 25);
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(x + 5, y + 5, 15, 15);
@@ -348,31 +418,36 @@ function drawPlaceholderQR(canvas, sessionCode) {
         ctx.fillRect(x, y, 3, 3);
     }
     
-    // Center text
     ctx.font = 'bold 10px Arial';
     ctx.textAlign = 'center';
     ctx.fillText('SCAN QR', 75, 60);
     ctx.font = '8px Arial';
     ctx.fillText(`Code: ${sessionCode}`, 75, 75);
-    ctx.fillText('or enter code', 75, 87);
 }
 
 function handleJoystickInputFromMobile(joystickInput) {
     if (gameState.currentState === GameState.PLAYING) {
         gameState.joystickInput = joystickInput;
         
+        // Calculate direction and speed from joystick
         const magnitude = Math.sqrt(joystickInput.x * joystickInput.x + joystickInput.y * joystickInput.y);
-        if (magnitude > 0.15) {
-            gameState.isMoving = true;
+        
+        if (magnitude > 0.1) {
+            // Update target direction based on joystick
             gameState.targetDirection = Math.atan2(joystickInput.y, joystickInput.x);
+            
+            // Speed boost based on joystick magnitude
+            const speedBoost = Math.min(magnitude, 1) * gameConfig.maxSpeedBoost;
+            gameState.currentSpeed = gameState.baseSpeed + speedBoost;
         } else {
-            gameState.isMoving = false;
+            // No joystick input - snake moves at constant base speed
+            gameState.currentSpeed = gameState.baseSpeed;
         }
     }
 }
 
 function handleGameActionFromMobile(action) {
-    console.log('Handling game action from mobile:', action);
+    console.log('🎮 Handling game action:', action);
     
     if (action === 'start' && gameState.currentState === GameState.WAITING_FOR_START) {
         startGame();
@@ -382,9 +457,10 @@ function handleGameActionFromMobile(action) {
 }
 
 function startGameLoop() {
-    console.log('Starting game loop...');
+    console.log('🎮 Starting game loop with constant movement...');
     gameState.gameRunning = true;
     gameState.lastUpdateTime = performance.now();
+    gameState.lastMoveTime = performance.now();
     
     generateFood();
     gameLoop = requestAnimationFrame(updateGame);
@@ -392,39 +468,45 @@ function startGameLoop() {
 }
 
 function startGame() {
-    console.log('Starting game from mobile controller!');
+    console.log('🚀 Starting game with continuous snake movement!');
     gameState.currentState = GameState.PLAYING;
-    gameState.direction = 0;
+    gameState.direction = 0; // Start facing right
     gameState.targetDirection = 0;
+    gameState.baseSpeed = gameConfig.baseSpeed;
+    gameState.currentSpeed = gameConfig.baseSpeed;
     gameState.joystickInput = { x: 0, y: 0 };
-    gameState.isMoving = false;
     gameState.frameCount = 0;
+    gameState.lastMoveTime = performance.now();
     
     const gameOverScreen = document.getElementById('game-over');
     if (gameOverScreen) {
         gameOverScreen.classList.add('hidden');
     }
     
-    updateGameStateInFirestore();
+    updateGameStateInFirebase();
 }
 
 function updateGame(currentTime) {
     if (!gameState.gameRunning) return;
     
     const deltaTime = currentTime - gameState.lastUpdateTime;
+    const moveDeltaTime = currentTime - gameState.lastMoveTime;
     
-    if (gameState.currentState === GameState.PLAYING && deltaTime >= 16) { // 60 FPS
-        gameState.frameCount++;
+    if (gameState.currentState === GameState.PLAYING) {
+        // Always update direction smoothly
+        updateSnakeDirection();
         
-        if (gameState.isMoving) {
-            updateSnakeDirection();
+        // CONSTANT MOVEMENT: Snake moves every frame regardless of joystick input
+        if (moveDeltaTime >= gameConfig.movementUpdateMs) {
             moveSnake();
+            gameState.lastMoveTime = currentTime;
         }
         
-        gameState.lastUpdateTime = currentTime;
+        gameState.frameCount++;
     }
     
     renderGame();
+    gameState.lastUpdateTime = currentTime;
     
     if (gameState.gameRunning) {
         gameLoop = requestAnimationFrame(updateGame);
@@ -432,58 +514,54 @@ function updateGame(currentTime) {
 }
 
 function updateSnakeDirection() {
-    if (!gameState.isMoving) return;
-    
+    // Smooth direction interpolation towards target
     let angleDiff = gameState.targetDirection - gameState.direction;
     
-    // Normalize angle difference
+    // Normalize angle difference to [-π, π]
     while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
     while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
     
-    // Smooth turning
+    // Apply smooth turning
     if (Math.abs(angleDiff) > gameConfig.turnSpeed) {
         gameState.direction += Math.sign(angleDiff) * gameConfig.turnSpeed;
     } else {
         gameState.direction = gameState.targetDirection;
     }
     
-    // Normalize direction
+    // Normalize direction to [0, 2π]
     while (gameState.direction < 0) gameState.direction += 2 * Math.PI;
     while (gameState.direction >= 2 * Math.PI) gameState.direction -= 2 * Math.PI;
 }
 
+// ENHANCED MOVEMENT: Snake ALWAYS moves forward
 function moveSnake() {
     if (gameState.snake.length === 0) return;
     
-    // Store previous head position for proper segment following
     const prevHead = { ...gameState.snake[0] };
-    
-    // Calculate new head position
     const head = { ...gameState.snake[0] };
-    const magnitude = Math.sqrt(gameState.joystickInput.x * gameState.joystickInput.x + gameState.joystickInput.y * gameState.joystickInput.y);
-    const moveSpeed = Math.min(magnitude, 1) * gameState.speed;
     
-    head.x += Math.cos(gameState.direction) * moveSpeed;
-    head.y += Math.sin(gameState.direction) * moveSpeed;
+    // CONSTANT MOVEMENT: Always move at current speed in current direction
+    head.x += Math.cos(gameState.direction) * gameState.currentSpeed;
+    head.y += Math.sin(gameState.direction) * gameState.currentSpeed;
     
-    // Check wall collision
+    // Wall collision detection
     if (head.x < gameConfig.wallMargin || 
         head.x > gameConfig.boardSize.width - gameConfig.wallMargin ||
         head.y < gameConfig.wallMargin || 
         head.y > gameConfig.boardSize.height - gameConfig.wallMargin) {
-        console.log('Wall collision! Head at:', head.x.toFixed(2), head.y.toFixed(2));
+        console.log('💥 Wall collision!');
         gameOver();
         return;
     }
     
-    // Check self collision - only check segments far enough away
+    // Self collision detection
     for (let i = gameConfig.minSelfCollisionSegments; i < gameState.snake.length; i++) {
         const segment = gameState.snake[i];
         const distance = Math.sqrt(
             Math.pow(head.x - segment.x, 2) + Math.pow(head.y - segment.y, 2)
         );
         if (distance < gameConfig.snakeSegmentSize * 0.8) {
-            console.log('Self collision with segment', i, 'distance:', distance.toFixed(2), 'snake length:', gameState.snake.length);
+            console.log('💥 Self collision!');
             gameOver();
             return;
         }
@@ -491,60 +569,52 @@ function moveSnake() {
     
     // Update head position
     gameState.snake[0] = head;
-    
-    // Move body segments to follow the head properly
     updateSnakeSegments(prevHead);
     
-    // Check food collision
+    // Food collision detection
     const foodDistance = Math.sqrt(
         Math.pow(head.x - gameState.food.x, 2) + Math.pow(head.y - gameState.food.y, 2)
     );
     
     if (foodDistance < (gameConfig.snakeSegmentSize + gameConfig.foodSize)) {
-        console.log('Food collected! Score:', gameState.score + 10, 'Snake will grow from', gameState.snake.length, 'to', gameState.snake.length + 1);
+        console.log('🍎 Food collected! Score:', gameState.score + 10);
         gameState.score += 10;
         updateScore();
         generateFood();
-        
-        // Add new segment at the tail
         addSnakeSegment();
         
-        // Increase speed gradually
-        if (gameState.speed < gameConfig.maxSpeed) {
-            gameState.speed = Math.min(gameConfig.maxSpeed, gameState.speed + gameConfig.speedIncrease);
-            console.log('Speed increased to:', gameState.speed);
+        // Increase base speed gradually
+        if (gameState.baseSpeed < gameConfig.maxSpeed) {
+            gameState.baseSpeed = Math.min(gameConfig.maxSpeed, gameState.baseSpeed + gameConfig.speedIncrease);
+            gameState.currentSpeed = gameState.baseSpeed; // Update current speed too
+            console.log('⚡ Speed increased to:', gameState.baseSpeed.toFixed(2));
         }
     }
 }
 
 function updateSnakeSegments(prevHeadPos) {
-    // Move each segment to follow the one in front of it
     for (let i = 1; i < gameState.snake.length; i++) {
         const currentSegment = gameState.snake[i];
         const targetSegment = i === 1 ? prevHeadPos : gameState.snake[i - 1];
         
-        // Calculate direction from current segment to target
         const dx = targetSegment.x - currentSegment.x;
         const dy = targetSegment.y - currentSegment.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        // Only move if the distance is greater than desired spacing
         if (distance > gameConfig.segmentSpacing) {
             const ratio = (distance - gameConfig.segmentSpacing) / distance;
-            currentSegment.x += dx * ratio * 0.8; // Smooth following with 80% catch-up
+            currentSegment.x += dx * ratio * 0.8; // Smooth following
             currentSegment.y += dy * ratio * 0.8;
         }
     }
 }
 
 function addSnakeSegment() {
-    // Add a new segment at the end of the snake
     if (gameState.snake.length > 0) {
         const tail = gameState.snake[gameState.snake.length - 1];
         let newSegment;
         
         if (gameState.snake.length > 1) {
-            // Calculate position based on the direction from second-to-last to last segment
             const secondToLast = gameState.snake[gameState.snake.length - 2];
             const dx = tail.x - secondToLast.x;
             const dy = tail.y - secondToLast.y;
@@ -557,14 +627,12 @@ function addSnakeSegment() {
                     y: tail.y + dy * ratio
                 };
             } else {
-                // Fallback if segments are at the same position
                 newSegment = {
                     x: tail.x - gameConfig.segmentSpacing,
                     y: tail.y
                 };
             }
         } else {
-            // Only head exists, add segment behind it
             newSegment = {
                 x: tail.x - gameConfig.segmentSpacing,
                 y: tail.y
@@ -572,7 +640,7 @@ function addSnakeSegment() {
         }
         
         gameState.snake.push(newSegment);
-        console.log('New segment added. Snake length now:', gameState.snake.length);
+        console.log('🐍 Snake grew! Length:', gameState.snake.length);
     }
 }
 
@@ -588,7 +656,6 @@ function generateFood() {
         };
         attempts++;
         
-        // Check if food is away from snake
         let tooClose = false;
         for (let segment of gameState.snake) {
             const distance = Math.sqrt(
@@ -603,8 +670,6 @@ function generateFood() {
         if (!tooClose) break;
         
     } while (attempts < maxAttempts);
-    
-    console.log('Food generated at:', gameState.food.x.toFixed(2), gameState.food.y.toFixed(2));
 }
 
 function renderGame() {
@@ -614,7 +679,7 @@ function renderGame() {
     ctx.fillStyle = colors.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Draw debug boundaries
+    // Draw boundary guidelines
     if (gameState.currentState === GameState.PLAYING) {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 1;
@@ -623,7 +688,7 @@ function renderGame() {
                       gameConfig.boardSize.height - gameConfig.wallMargin * 2);
     }
     
-    // Draw snake body segments (skip head)
+    // Draw snake body segments
     ctx.shadowColor = colors.snake;
     ctx.shadowBlur = 8;
     ctx.fillStyle = colors.snake;
@@ -637,28 +702,28 @@ function renderGame() {
     
     ctx.shadowBlur = 0;
     
-    // Draw snake head
+    // Draw snake head with direction indicator
     if (gameState.snake.length > 0) {
         const head = gameState.snake[0];
         
-        // Head circle
+        // Head circle with pulsing effect based on speed
         ctx.shadowColor = colors.snakeHead;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 12 + (gameState.currentSpeed - gameState.baseSpeed) * 3;
         ctx.fillStyle = colors.snakeHead;
         ctx.beginPath();
         ctx.arc(head.x, head.y, gameConfig.snakeSegmentSize / 2, 0, 2 * Math.PI);
         ctx.fill();
         
-        // Direction arrow - only when moving
-        if (gameState.isMoving && gameState.currentState === GameState.PLAYING) {
+        // Always show direction arrow since snake is always moving
+        if (gameState.currentState === GameState.PLAYING) {
             ctx.shadowBlur = 0;
             ctx.fillStyle = '#ffffff';
             ctx.save();
             ctx.translate(head.x, head.y);
             ctx.rotate(gameState.direction);
             
-            // Draw arrow
-            const arrowSize = gameConfig.snakeSegmentSize / 3;
+            // Arrow size based on speed
+            const arrowSize = (gameConfig.snakeSegmentSize / 3) * (1 + (gameState.currentSpeed - gameState.baseSpeed) / gameConfig.maxSpeedBoost * 0.3);
             ctx.beginPath();
             ctx.moveTo(arrowSize, 0);
             ctx.lineTo(-arrowSize / 2, -arrowSize / 2);
@@ -672,14 +737,14 @@ function renderGame() {
         ctx.shadowBlur = 0;
     }
     
-    // Draw food
+    // Draw food with pulsing effect
     ctx.shadowColor = colors.food;
     ctx.shadowBlur = 15;
     ctx.fillStyle = colors.food;
     ctx.beginPath();
-    ctx.arc(gameState.food.x, gameState.food.y, gameConfig.foodSize, 0, 2 * Math.PI);
+    const pulseFactor = 1 + Math.sin(Date.now() * 0.005) * 0.1;
+    ctx.arc(gameState.food.x, gameState.food.y, gameConfig.foodSize * pulseFactor, 0, 2 * Math.PI);
     ctx.fill();
-    
     ctx.shadowBlur = 0;
     
     // Show waiting message
@@ -699,7 +764,7 @@ function renderGame() {
         ctx.shadowBlur = 10;
         
         ctx.fillText('Waiting for Mobile Controller', canvas.width / 2, canvas.height / 2 - 20);
-        ctx.fillText('Press PLAY to Begin!', canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText('Snake Moves Continuously - Be Ready!', canvas.width / 2, canvas.height / 2 + 20);
         
         ctx.shadowBlur = 0;
     }
@@ -712,10 +777,13 @@ function updateScore() {
     }
 }
 
+function updateConnectionStatus(status) {
+    console.log('🔗 Connection status:', status);
+}
+
 function gameOver() {
-    console.log('Game over! Final score:', gameState.score, 'Snake length:', gameState.snake.length);
+    console.log('💀 Game over! Final score:', gameState.score, 'Snake length:', gameState.snake.length);
     gameState.currentState = GameState.GAME_OVER;
-    gameState.isMoving = false;
     
     const finalScoreElement = document.getElementById('final-score');
     if (finalScoreElement) {
@@ -727,17 +795,18 @@ function gameOver() {
         gameOverScreen.classList.remove('hidden');
     }
     
-    updateGameStateInFirestore();
+    updateGameStateInFirebase();
 }
 
 function restartGame() {
-    console.log('Restarting game from mobile controller!');
+    console.log('🔄 Restarting game with continuous movement!');
     
     gameState = {
         snake: createInitialSnake(),
         direction: 0,
         targetDirection: 0,
-        speed: gameConfig.initialSpeed,
+        baseSpeed: gameConfig.baseSpeed,
+        currentSpeed: gameConfig.baseSpeed,
         food: { 
             x: gameConfig.boardSize.width * 0.75, 
             y: gameConfig.boardSize.height * 0.25 
@@ -745,9 +814,9 @@ function restartGame() {
         score: 0,
         gameRunning: true,
         lastUpdateTime: 0,
+        lastMoveTime: 0,
         currentState: GameState.PLAYING,
         joystickInput: { x: 0, y: 0 },
-        isMoving: false,
         frameCount: 0
     };
     
@@ -759,22 +828,25 @@ function restartGame() {
     }
     
     generateFood();
-    updateGameStateInFirestore();
+    updateGameStateInFirebase();
 }
 
-async function updateGameStateInFirestore() {
-    if (firebaseReady && firestore && sessionManager.currentSession) {
+// Optimized Firebase state updates - MINIMAL operations
+async function updateGameStateInFirebase() {
+    if (sessionManager.connectionType === 'hybrid' && firestore && sessionManager.currentSession) {
         try {
+            // Only update on major state changes - NOT continuous updates
             const sessionDoc = firestore.collection('sessions').doc(sessionManager.currentSession);
             await sessionDoc.update({
                 'gameState.state': gameState.currentState,
                 'gameState.score': gameState.score,
-                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                lastActivity: firebase.firestore.FieldValue.serverTimestamp()
             });
+            console.log('📊 Game state updated in Firestore');
         } catch (error) {
-            console.error('Error updating game state in Firestore:', error);
+            console.error('Error updating game state:', error);
         }
-    } else if (sessionManager.currentSession) {
+    } else if (sessionManager.connectionType === 'localStorage' && sessionManager.currentSession) {
         localStorage.setItem(`session_${sessionManager.currentSession}_state`, JSON.stringify({
             state: gameState.currentState,
             score: gameState.score
@@ -784,7 +856,7 @@ async function updateGameStateInFirestore() {
 
 // Mobile Controller Functions
 function initializeMobileController() {
-    console.log('Initializing mobile controller...');
+    console.log('📱 Initializing mobile controller...');
     
     const urlParams = new URLSearchParams(window.location.search);
     const sessionFromUrl = urlParams.get('session');
@@ -820,18 +892,12 @@ function setupMobileEventListeners() {
     
     const centerBtn = document.getElementById('btn-center');
     if (centerBtn) {
-        centerBtn.addEventListener('click', function() {
-            if (!centerBtn.disabled) {
-                handleCenterButtonPress(centerBtn);
-            }
-        });
+        centerBtn.addEventListener('click', handleCenterButtonPress);
         
         centerBtn.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            if (!centerBtn.disabled) {
-                handleCenterButtonPress(centerBtn);
-                centerBtn.classList.add('active');
-            }
+            handleCenterButtonPress();
+            centerBtn.classList.add('active');
         });
         
         centerBtn.addEventListener('touchend', (e) => {
@@ -904,7 +970,12 @@ function handleJoystickDrag(e) {
     const normalizedX = deltaX / joystickState.maxDistance;
     const normalizedY = deltaY / joystickState.maxDistance;
     
-    sendJoystickInput(normalizedX, normalizedY);
+    // THROTTLED joystick input to reduce operations
+    const now = Date.now();
+    if (now - joystickState.lastInputTime > gameConfig.joystickThrottleMs) {
+        sendJoystickInput(normalizedX, normalizedY);
+        joystickState.lastInputTime = now;
+    }
 }
 
 function endJoystickDrag(e) {
@@ -915,7 +986,7 @@ function endJoystickDrag(e) {
     joystickState.handleElement.classList.remove('dragging');
     
     joystickState.handleElement.style.transform = 'translate(0px, 0px)';
-    sendJoystickInput(0, 0);
+    sendJoystickInput(0, 0); // Snake keeps moving at base speed
 }
 
 function moveJoystickToPosition(e) {
@@ -949,7 +1020,10 @@ function moveJoystickToPosition(e) {
     handleJoystickDrag({ clientX, clientY, preventDefault: () => {} });
 }
 
-function handleCenterButtonPress(centerBtn) {
+function handleCenterButtonPress() {
+    const centerBtn = document.getElementById('btn-center');
+    if (!centerBtn || centerBtn.disabled) return;
+    
     const currentIcon = centerBtn.querySelector('.center-icon').textContent;
     if (currentIcon === '▶') {
         sendGameAction('start');
@@ -959,49 +1033,103 @@ function handleCenterButtonPress(centerBtn) {
 }
 
 function connectToSession(sessionCode) {
-    console.log('Attempting to connect to session:', sessionCode);
+    console.log('🔗 Attempting to connect to session:', sessionCode);
+    showConnectionStatus('Connecting...');
     
-    if (firebaseReady && firestore) {
-        connectViaFirestore(sessionCode);
+    sessionManager.connectionRetries = 0;
+    attemptConnection(sessionCode);
+}
+
+// Robust connection with retry logic
+function attemptConnection(sessionCode) {
+    if (firebaseReady) {
+        connectViaRobustHybrid(sessionCode);
     } else {
         connectViaLocalStorage(sessionCode);
     }
 }
 
-async function connectViaFirestore(sessionCode) {
+// Robust hybrid connection with detailed error handling and retries
+async function connectViaRobustHybrid(sessionCode) {
     try {
+        console.log(`🔥 Attempting hybrid connection (attempt ${sessionManager.connectionRetries + 1}/${gameConfig.connectionRetries})...`);
+        showConnectionStatus(`Connecting to game... (${sessionManager.connectionRetries + 1}/${gameConfig.connectionRetries})`);
+        
+        // Wait for Firebase to be ready
+        await waitForFirebaseReady();
+        
+        // Check if session exists in Firestore with detailed logging
         const sessionDoc = firestore.collection('sessions').doc(sessionCode);
+        console.log('📋 Checking if session exists in Firestore...');
         
         const docSnapshot = await sessionDoc.get();
+        
         if (docSnapshot.exists) {
+            const sessionData = docSnapshot.data();
+            console.log('✅ Session found in Firestore:', sessionData);
+            
             sessionManager.connectedSession = sessionCode;
+            sessionManager.connectionType = 'hybrid';
             showControllerInterface();
             showConnectionSuccess();
-            console.log('Connected to Firestore session:', sessionCode);
+            console.log('✅ Successfully connected to hybrid session:', sessionCode);
             
-            sessionManager.unsubscribe = sessionDoc.onSnapshot((doc) => {
+            // Listen to Firestore for game state updates
+            sessionManager.firestoreUnsubscribe = sessionDoc.onSnapshot((doc) => {
                 if (doc.exists) {
                     const data = doc.data();
                     if (data.gameState) {
                         updateCenterButtonIcon(data.gameState.state);
                     }
                 }
+            }, (error) => {
+                console.error('❌ Firestore listener error:', error);
+                showConnectionError('Connection lost. Please refresh and try again.');
             });
             
-            const data = docSnapshot.data();
-            if (data.gameState) {
-                updateCenterButtonIcon(data.gameState.state);
-            } else {
-                updateCenterButtonIcon(GameState.WAITING_FOR_START);
+            // Update connection status in Firestore
+            await sessionDoc.update({ 
+                connected: true,
+                lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            console.log('✅ Updated connection status in Firestore');
+            
+            // Set up Realtime Database for joystick
+            sessionManager.realtimeRef = database.ref(`controllers/${sessionCode}`);
+            await sessionManager.realtimeRef.set({
+                connected: true,
+                joystick: { x: 0, y: 0 },
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+            console.log('✅ Realtime Database connected for joystick input');
+            
+            // Set initial button state
+            if (sessionData.gameState) {
+                updateCenterButtonIcon(sessionData.gameState.state);
             }
             
         } else {
-            showConnectionError('Session not found. Make sure the game is running on desktop.');
+            console.log('❌ Session not found in Firestore');
+            throw new Error(`Session ${sessionCode} not found in Firestore. Make sure the game is running on desktop.`);
         }
         
     } catch (error) {
-        console.error('Firestore connection error:', error);
-        connectViaLocalStorage(sessionCode);
+        console.error('❌ Hybrid connection failed:', error);
+        
+        sessionManager.connectionRetries++;
+        
+        if (sessionManager.connectionRetries < gameConfig.connectionRetries) {
+            console.log(`🔄 Retrying connection in ${gameConfig.retryDelayMs/1000} seconds...`);
+            showConnectionError(`Connection failed. Retrying... (${sessionManager.connectionRetries}/${gameConfig.connectionRetries})`);
+            
+            setTimeout(() => {
+                attemptConnection(sessionCode);
+            }, gameConfig.retryDelayMs);
+        } else {
+            console.log('🔄 Max retries reached, falling back to localStorage...');
+            showConnectionError('Could not connect via Firebase. Trying local mode...');
+            connectViaLocalStorage(sessionCode);
+        }
     }
 }
 
@@ -1010,9 +1138,10 @@ function connectViaLocalStorage(sessionCode) {
     
     if (currentSession === sessionCode) {
         sessionManager.connectedSession = sessionCode;
+        sessionManager.connectionType = 'localStorage';
         showControllerInterface();
-        showConnectionSuccess();
-        console.log('Connected to localStorage session:', sessionCode);
+        showConnectionSuccess('Connected via localStorage!');
+        console.log('✅ Connected via localStorage:', sessionCode);
         
         const gameStateStr = localStorage.getItem(`session_${sessionCode}_state`);
         const gameStateData = gameStateStr ? JSON.parse(gameStateStr) : { state: GameState.WAITING_FOR_START };
@@ -1028,13 +1157,11 @@ function connectViaLocalStorage(sessionCode) {
         });
         
     } else {
-        showConnectionError('Session not found. Make sure the game is running on desktop.');
+        showConnectionError('Session not found. Make sure the game is running on desktop and try again.');
     }
 }
 
 function showControllerInterface() {
-    console.log('Showing controller interface');
-    
     const connectionForm = document.getElementById('connection-form');
     const controllerInterface = document.getElementById('controller-interface');
     
@@ -1042,11 +1169,11 @@ function showControllerInterface() {
     if (controllerInterface) controllerInterface.style.display = 'block';
 }
 
-function showConnectionSuccess() {
+function showConnectionSuccess(message = 'Connected! Snake moves continuously!') {
     const statusElement = document.getElementById('mobile-connection-status');
     if (statusElement) {
-        statusElement.textContent = 'Connected successfully!';
-        statusElement.style.color = '#ff6b35';
+        statusElement.textContent = message;
+        statusElement.style.color = '#00ff00';
     }
 }
 
@@ -1055,6 +1182,14 @@ function showConnectionError(message) {
     if (statusElement) {
         statusElement.textContent = message;
         statusElement.style.color = '#ff1493';
+    }
+}
+
+function showConnectionStatus(message) {
+    const statusElement = document.getElementById('mobile-connection-status');
+    if (statusElement) {
+        statusElement.textContent = message;
+        statusElement.style.color = '#ff6b35';
     }
 }
 
@@ -1079,88 +1214,58 @@ function updateCenterButtonIcon(currentState) {
         centerBtn.classList.add('playing');
         if (btnIcon) btnIcon.textContent = '🐍';
     }
-    
-    console.log('Center button updated for state:', currentState);
 }
 
+// Optimized input functions - Minimal Firebase operations
 function sendJoystickInput(x, y) {
     if (!sessionManager.connectedSession) return;
     
     const joystickInput = { x, y };
     
-    if (firebaseReady && firestore) {
-        sendJoystickInputFirestore(joystickInput);
-    } else {
-        sendJoystickInputLocalStorage(joystickInput);
+    if (sessionManager.connectionType === 'hybrid' && sessionManager.realtimeRef) {
+        // Use Realtime Database - FREE unlimited operations
+        sessionManager.realtimeRef.update({
+            joystick: joystickInput,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        }).catch(error => {
+            console.error('Error sending joystick input:', error);
+        });
+    } else if (sessionManager.connectionType === 'localStorage') {
+        localStorage.setItem(`session_${sessionManager.connectedSession}_joystick`, JSON.stringify({
+            joystick: joystickInput,
+            timestamp: Date.now()
+        }));
     }
 }
 
 function sendGameAction(action) {
-    if (!sessionManager.connectedSession) {
-        console.error('No connected session');
-        return;
-    }
+    if (!sessionManager.connectedSession) return;
     
-    console.log('Sending game action:', action);
+    console.log('📤 Sending game action:', action);
     
-    if (firebaseReady && firestore) {
-        sendGameActionFirestore(action);
-    } else {
-        sendGameActionLocalStorage(action);
-    }
-}
-
-async function sendJoystickInputFirestore(joystickInput) {
-    try {
+    if (sessionManager.connectionType === 'hybrid' && firestore) {
+        // Use Firestore for game actions - minimal writes
         const sessionDoc = firestore.collection('sessions').doc(sessionManager.connectedSession);
-        await sessionDoc.update({
-            connected: true,
-            joystickInput: joystickInput,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-    } catch (error) {
-        console.error('Error sending joystick input to Firestore:', error);
-        sendJoystickInputLocalStorage(joystickInput);
-    }
-}
-
-async function sendGameActionFirestore(action) {
-    try {
-        const sessionDoc = firestore.collection('sessions').doc(sessionManager.connectedSession);
-        await sessionDoc.update({
-            connected: true,
+        sessionDoc.update({
             gameAction: action,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+        }).catch(error => {
+            console.error('Error sending game action:', error);
         });
-        console.log('Game action sent via Firestore:', action);
-    } catch (error) {
-        console.error('Error sending game action to Firestore:', error);
-        sendGameActionLocalStorage(action);
+    } else if (sessionManager.connectionType === 'localStorage') {
+        localStorage.setItem(`session_${sessionManager.connectedSession}_action`, JSON.stringify({
+            action: action,
+            timestamp: Date.now()
+        }));
     }
 }
 
-function sendJoystickInputLocalStorage(joystickInput) {
-    const sessionData = {
-        joystickInput: joystickInput,
-        timestamp: Date.now()
-    };
-    
-    localStorage.setItem(`session_${sessionManager.connectedSession}`, JSON.stringify(sessionData));
-}
-
-function sendGameActionLocalStorage(action) {
-    const sessionData = {
-        gameAction: action,
-        timestamp: Date.now()
-    };
-    
-    localStorage.setItem(`session_${sessionManager.connectedSession}`, JSON.stringify(sessionData));
-    console.log('Game action sent via localStorage:', action);
-}
-
-// Cleanup function for when page is closed
+// Cleanup resources on page unload
 window.addEventListener('beforeunload', function() {
-    if (sessionManager.unsubscribe) {
-        sessionManager.unsubscribe();
+    if (sessionManager.firestoreUnsubscribe) {
+        sessionManager.firestoreUnsubscribe();
+    }
+    if (sessionManager.realtimeRef) {
+        sessionManager.realtimeRef.off();
     }
 });
