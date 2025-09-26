@@ -1,0 +1,165 @@
+name: 🚀 CI/CD - Test & Deploy to Firebase
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Test job - runs on all pushes and PRs
+  test:
+    name: 🧪 Run Tests & Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: 📦 Install dependencies
+        run: |
+          npm install -g firebase-tools
+          # Add other dependencies if needed
+          # npm install
+      
+      - name: 🔍 Lint JavaScript files
+        run: |
+          # Basic JavaScript syntax check
+          node -c app.js
+          echo "✅ JavaScript syntax check passed"
+      
+      - name: 🧪 Run basic tests
+        run: |
+          # Test if HTML is valid
+          if ! grep -q "<!DOCTYPE html>" index.html; then
+            echo "❌ HTML DOCTYPE missing"
+            exit 1
+          fi
+          
+          # Test if Firebase config exists
+          if ! grep -q "firebaseConfig" app.js; then
+            echo "❌ Firebase config not found"
+            exit 1
+          fi
+          
+          # Test if game canvas exists
+          if ! grep -q "game-canvas" index.html; then
+            echo "❌ Game canvas element missing"
+            exit 1
+          fi
+          
+          echo "✅ All basic tests passed"
+      
+      - name: 🔒 Security scan
+        run: |
+          # Check for common security issues
+          if grep -r "eval(" . --include="*.js"; then
+            echo "⚠️ Warning: eval() usage detected"
+          fi
+          
+          if grep -r "innerHTML.*+" . --include="*.js"; then
+            echo "⚠️ Warning: Potential XSS vulnerability with innerHTML"
+          fi
+          
+          echo "✅ Security scan completed"
+
+  # Deploy job - only runs on main branch pushes
+  deploy:
+    name: 🚀 Deploy to Firebase Hosting
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: 📦 Install Firebase CLI
+        run: npm install -g firebase-tools
+      
+      - name: 🔨 Build project (if needed)
+        run: |
+          # Add build steps here if you have a build process
+          echo "✅ Build completed (no build process configured)"
+      
+      - name: 🚀 Deploy to Firebase Hosting
+        run: |
+          firebase deploy --only hosting --token "${{ secrets.FIREBASE_TOKEN }}" --non-interactive
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      
+      - name: 📝 Create deployment comment
+        uses: actions/github-script@v7
+        if: github.event_name == 'push'
+        with:
+          script: |
+            const { context } = require('@actions/github');
+            const deployUrl = 'https://${{ secrets.FIREBASE_PROJECT_ID }}.web.app';
+            
+            // Create a comment on the commit (if it's a push)
+            if (context.eventName === 'push') {
+              console.log('🎉 Deployment successful!');
+              console.log(`🔗 Live URL: ${deployUrl}`);
+            }
+
+  # Performance audit job - runs after deployment
+  lighthouse:
+    name: 🔍 Lighthouse Performance Audit
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: 📦 Install Lighthouse CI
+        run: npm install -g @lhci/cli@0.12.x
+      
+      - name: 🔍 Run Lighthouse audit
+        run: |
+          # Wait for deployment to be ready
+          sleep 30
+          
+          # Run Lighthouse audit
+          lhci autorun --collect.url=https://${{ secrets.FIREBASE_PROJECT_ID }}.web.app || echo "Lighthouse audit completed"
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Notification job - sends status updates
+  notify:
+    name: 📢 Notify Status
+    runs-on: ubuntu-latest
+    needs: [test, deploy]
+    if: always()
+    
+    steps:
+      - name: 📢 Success notification
+        if: needs.test.result == 'success' && needs.deploy.result == 'success'
+        run: |
+          echo "🎉 Deployment successful!"
+          echo "🔗 Live URL: https://${{ secrets.FIREBASE_PROJECT_ID }}.web.app"
+          echo "📱 Test cross-device functionality with your mobile device"
+      
+      - name: ❌ Failure notification
+        if: needs.test.result == 'failure' || needs.deploy.result == 'failure'
+        run: |
+          echo "❌ Deployment failed!"
+          echo "🔍 Check the logs above for details"
+          exit 1

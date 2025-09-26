@@ -1,0 +1,84 @@
+# Cross-Device Snake Game - Code Owners
+# 
+# This file defines who will be requested for review when PRs are opened
+# that modify certain files or directories.
+
+# Global owners - will be requested for review on all PRs
+* @aryamangodara
+
+
+
+# Core game logic
+app.js @aryamangodara
+
+
+index.html @aryamangodara
+
+
+
+# Styling and UI
+styles.css @aryamangodara
+
+
+
+# Firebase configuration and deployment
+firebase.json @aryamangodara
+
+
+.firebaserc @aryamangodara
+
+
+
+# CI/CD and GitHub workflows
+/.github/ @aryamangodara
+
+
+/.github/workflows/ @aryamangodara
+
+
+
+# Documentation
+README.md @aryamangodara
+
+
+CONTRIBUTING.md @aryamangodara
+
+
+LICENSE @aryamangodara
+
+
+
+# Issue and PR templates
+/.github/ISSUE_TEMPLATE/ @aryamangodara
+
+
+/.github/PULL_REQUEST_TEMPLATE.md @aryamangodara
+
+
+
+# Configuration files
+.gitignore @aryamangodara
+
+
+package.json @aryamangodara
+
+
+
+# Add additional reviewers as your project grows:
+# 
+# Examples for when you have a team:
+# 
+# # Frontend specialists
+# *.css @frontend-team
+# *.html @frontend-team
+# 
+# # Backend/Firebase specialists  
+# firebase.json @backend-team
+# /.github/workflows/ @devops-team
+# 
+# # Documentation team
+# *.md @docs-team
+# 
+# # Security-sensitive files
+# /.github/workflows/ @security-team @aryamangodara
+
