@@ -1,69 +1,12 @@
 {
-  "name": "cross-device-snake-game",
+  "name": "snake_controller",
   "version": "1.0.0",
   "description": "A modern Snake game with cross-device multiplayer functionality using Firebase",
-  "main": "app.js",
-  "scripts": {
-    "start": "npx http-server -p 8000 -c-1",
-    "dev": "npx http-server -p 8000 -c-1 -o",
-    "lint": "node -c app.js && echo 'JavaScript syntax check passed'",
-    "test": "npm run lint && npm run test:html && npm run test:config",
-    "test:html": "node -e \"const fs=require('fs'); const html=fs.readFileSync('index.html','utf8'); if(!html.includes('<!DOCTYPE html>')) throw new Error('HTML DOCTYPE missing')\" && echo 'HTML validation passed'",
-    "test:config": "node -e \"const fs=require('fs'); const js=fs.readFileSync('app.js','utf8'); if(!js.includes('firebaseConfig')) throw new Error('Firebase config not found')\" && echo 'Config validation passed'",
-    "build": "echo 'No build process configured - serving static files'",
-    "firebase:serve": "firebase serve --port 5000",
-    "firebase:deploy": "firebase deploy --only hosting",
-    "firebase:init": "firebase init hosting",
-    "firebase:login": "firebase login",
-    "setup": "npm install -g firebase-tools http-server",
-    "setup:firebase": "firebase login && firebase init hosting",
-    "validate": "npm run lint && npm run test:html && npm run test:config",
-    "desktop": "echo 'Open http://localhost:8000?mode=desktop' && npm start",
-    "mobile": "echo 'Open http://localhost:8000?mode=mobile' && npm start"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aryamangodara/snake_controller.git"
   },
-  "keywords": [
-    "game",
-    "snake",
-    "cross-device",
-    "firebase",
-    "javascript",
-    "html5",
-    "canvas",
-    "mobile",
-    "multiplayer",
-    "real-time",
-    "progressive-web-app"
-  ],
-  "author": "Your Name <your.email@example.com>",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/aryamangodara/snake_controller/issues"
-  },
   "homepage": "https://github.com/aryamangodara/snake_controller#readme",
-  "engines": {
-    "node": ">=14.0.0",
-    "npm": ">=6.0.0"
-  },
-  "devDependencies": {
-    "firebase-tools": "^12.0.0",
-    "http-server": "^14.0.0"
-  },
-  "browserslist": [
-    "> 1%",
-    "last 2 versions",
-    "not dead",
-    "not ie <= 11"
-  ],
-  "config": {
-    "port": "8000",
-    "host": "localhost"
-  },
-  "funding": {
-    "type": "github",
-    "url": "https://github.com/sponsors/aryamangodara"
-  }
+  "author": "Aryaman Godara <your.email@example.com>",
+  "license": "MIT"
 }
