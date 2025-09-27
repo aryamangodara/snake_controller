@@ -104,7 +104,6 @@ jobs:
         if: github.event_name == 'push'
         with:
           script: |
-            const { context } = require('@actions/github');
             const deployUrl = 'https://${{ secrets.FIREBASE_PROJECT_ID }}.web.app';
             
             // Create a comment on the commit (if it's a push)
