@@ -31,26 +31,26 @@ jobs:
       - name: 🔍 Lint JavaScript files
         run: |
           # Basic JavaScript syntax check
-          node -c app.js
+          node -c public/app.js  # ✅ Looking in public directory
           echo "✅ JavaScript syntax check passed"
       
       - name: 🧪 Run basic tests
         run: |
           # Test if HTML is valid
-          if ! grep -q "<!DOCTYPE html>" index.html; then
+          if ! grep -q "<!DOCTYPE" public/index.html; then  # ✅ Looking in public
             echo "❌ HTML DOCTYPE missing"
             exit 1
           fi
           
           # Test if Firebase config exists
-          if ! grep -q "firebaseConfig" app.js; then
+          if ! grep -q "firebaseConfig" public/app.js; then  # ✅ Looking in public
             echo "❌ Firebase config not found"
             exit 1
           fi
           
           # Test if game canvas exists
-          if ! grep -q "game-canvas" index.html; then
-            echo "❌ Game canvas element missing"
+          if ! grep -q "game-canvas" public/index.html; then  # ✅ Looking in public
+            echo "❌ Game canvas element not found"
             exit 1
           fi
           
