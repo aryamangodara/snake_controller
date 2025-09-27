@@ -6,9 +6,16 @@
     <title>Snake Game - Cross Device Controller</title>
     <link rel="stylesheet" href="style.css">
     
-    <!-- Firebase CDN - Updated for Firestore -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="snake-favicon.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="snake-favicon.png">
+    <link rel="apple-touch-icon" href="snake-logo.png">
+    <meta name="theme-color" content="#21808d">
+    
+    <!-- Firebase CDN - v8 Compatibility Mode for Realtime Database -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     
     <!-- Different QR Code Libraries - Try multiple sources -->
     <script src="https://unpkg.com/qrious@4.0.2/dist/qrious.min.js"></script>
@@ -16,16 +23,70 @@
     
     <!-- Font Awesome for social icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Override CSS Media Queries -->
+    <style>
+        /* Force desktop and mobile views to be visible when JavaScript sets them */
+        .desktop-view[style*="display: block"] {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        .mobile-view[style*="display: block"] {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        /* Ensure hidden views stay hidden */
+        .desktop-view[style*="display: none"],
+        .mobile-view[style*="display: none"] {
+            display: none !important;
+        }
+
+        /* Loading screen controls */
+        .loading-screen {
+            visibility: visible !important;
+        }
+
+        .loading-screen[style*="display: none"] {
+            display: none !important;
+        }
+    </style>
 </head>
 <body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-container">
+            <div class="logo-container">
+                <img src="snake-logo.png" alt="Snake Game Logo" class="loading-logo">
+            </div>
+            <div class="loading-spinner-container">
+                <div class="loading-spinner"></div>
+                <div class="loading-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+            <p class="loading-text">Loading Snake Game...</p>
+        </div>
+    </div>
+
     <!-- Desktop Game View -->
     <div id="desktop-view" class="desktop-view">
         <div class="desktop-container">
             <!-- Top Header -->
             <div class="top-header">
                 <div class="title-section">
-                    <h1 class="game-title">Snake Game</h1>
-                    <p class="creator-text">by Aryaman Godara</p>
+                    <div class="title-with-logo">
+                        <img src="snake-logo.png" alt="Snake Game Logo" class="game-logo">
+                        <div class="title-text">
+                            <h1 class="game-title">Snake Game</h1>
+                            <p class="creator-text">by Aryaman Godara</p>
+                        </div>
+                    </div>
                 </div>
                 <div class="social-section">
                     <a href="https://www.linkedin.com/in/aryamangodara/" target="_blank" class="social-link linkedin">
@@ -86,7 +147,10 @@
         <!-- Connection Form -->
         <div id="connection-form" class="connection-form">
             <div class="mobile-header">
-                <h1 class="mobile-title">Snake Controller</h1>
+                <div class="mobile-logo-container">
+                    <img src="snake-logo.png" alt="Snake Game Logo" class="mobile-logo">
+                    <h1 class="mobile-title">Snake Controller</h1>
+                </div>
             </div>
             
             <div class="connection-card">
@@ -121,5 +185,40 @@
     </div>
 
     <script src="app.js"></script>
+    
+    <!-- Simple Loading Screen Handler with CSS Override Fix -->
+    <script>
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                console.log('🎬 Starting loading screen sequence...');
+                
+                setTimeout(function() {
+                    const loadingScreen = document.getElementById('loading-screen');
+                    const desktopView = document.getElementById('desktop-view');
+                    const mobileView = document.getElementById('mobile-view');
+                    
+                    console.log('⏰ Hiding loading screen...');
+                    
+                    // Hide loading screen with !important
+                    loadingScreen.style.cssText = 'display: none !important';
+                    
+                    setTimeout(function() {
+                        console.log('✅ Loading screen hidden');
+                        
+                        // Show appropriate view with !important to override media queries
+                        if (window.innerWidth <= 768) {
+                            console.log('📱 Showing mobile view');
+                            mobileView.style.cssText = 'display: block !important';
+                            desktopView.style.cssText = 'display: none !important';
+                        } else {
+                            console.log('🖥️ Showing desktop view');
+                            desktopView.style.cssText = 'display: block !important';
+                            mobileView.style.cssText = 'display: none !important';
+                        }
+                    }, 500);
+                }, 2000);
+            }, 100);
+        });
+    </script>
 </body>
 </html>
