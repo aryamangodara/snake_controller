@@ -940,22 +940,33 @@ function startJoystickDrag(e) {
     joystickState.maxDistance = rect.width / 2 * 0.8;
 }
 
+function getPointerPosition(e) {
+    if (typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    if (e.touches && e.touches.length > 0) {
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+
+    return null;
+}
+
 function handleJoystickDrag(e) {
     if (!joystickState.isDragging) return;
     
     e.preventDefault();
     
-    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    const pointerPosition = getPointerPosition(e);
     
-    if (!clientX || !clientY) return;
+    if (!pointerPosition) return;
     
     const rect = joystickState.baseRect;
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     
-    let deltaX = clientX - centerX;
-    let deltaY = clientY - centerY;
+    let deltaX = pointerPosition.x - centerX;
+    let deltaY = pointerPosition.y - centerY;
     
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
     
@@ -998,11 +1009,11 @@ function moveJoystickToPosition(e) {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     
-    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    const pointerPosition = getPointerPosition(e);
+    if (!pointerPosition) return;
     
-    let deltaX = clientX - centerX;
-    let deltaY = clientY - centerY;
+    let deltaX = pointerPosition.x - centerX;
+    let deltaY = pointerPosition.y - centerY;
     
     const maxDistance = rect.width / 2 * 0.8;
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
@@ -1017,7 +1028,7 @@ function moveJoystickToPosition(e) {
     joystickState.baseRect = rect;
     joystickState.maxDistance = maxDistance;
     
-    handleJoystickDrag({ clientX, clientY, preventDefault: () => {} });
+    handleJoystickDrag({ clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => {} });
 }
 
 function handleCenterButtonPress() {
