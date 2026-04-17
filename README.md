@@ -46,7 +46,7 @@ cd cross-device-snake-game
 ### 2. Firebase Setup (Optional for Cross-Device Play)
 1. Create a [Firebase project](https://console.firebase.google.com/)
 2. Enable Firestore Database
-3. Copy your Firebase config to `app.js`:
+3. Copy your Firebase config to `public/js/config.js`:
 ```javascript
 const firebaseConfig = {
     apiKey: "your-api-key",
@@ -136,9 +136,11 @@ Desktop Game State → Session Document → Mobile Button States
 
 ### File Structure
 ```
-├── index.html          # Main HTML structure
-├── styles.css          # Responsive CSS styling
-├── app.js              # Core game logic and Firebase integration
+├── public/             # Static website files
+│   ├── css/           # Modular CSS files
+│   ├── js/            # Modular Javascript logic
+│   ├── index.html     # Main HTML structure
+│   └── ...            # Assets and other scripts
 ├── firebase.json       # Firebase hosting configuration
 └── README.md           # Project documentation
 ```

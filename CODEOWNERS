@@ -8,16 +8,14 @@
 
 
 
-# Core game logic
-app.js @aryamangodara
-
-
-index.html @aryamangodara
+# Core game logic and UI
+public/js/ @aryamangodara
+public/index.html @aryamangodara
 
 
 
 # Styling and UI
-styles.css @aryamangodara
+public/css/ @aryamangodara
 
 
 

@@ -30,8 +30,8 @@ jobs:
       
       - name: 🔍 Lint JavaScript files
         run: |
-          # Basic JavaScript syntax check
-          node -c public/app.js  # ✅ Looking in public directory
+          # Basic JavaScript syntax check for all JS files
+          find public -name "*.js" -exec node -c {} \;
           echo "✅ JavaScript syntax check passed"
       
       - name: 🧪 Run basic tests
@@ -43,7 +43,7 @@ jobs:
           fi
           
           # Test if Firebase config exists
-          if ! grep -q "firebaseConfig" public/app.js; then  # ✅ Looking in public
+          if ! grep -q "firebaseConfig" public/js/config.js; then  # ✅ Looking in correct file
             echo "❌ Firebase config not found"
             exit 1
           fi

@@ -179,14 +179,16 @@ function handleJoystickInput(input) {
 ## 🏗️ Project Structure
 
 ```
-├── index.html          # Main HTML structure
-├── app.js              # Core game logic and Firebase integration
-├── styles.css          # Responsive CSS styling
+├── public/
+│   ├── css/           # Modular CSS files
+│   ├── js/            # Modular Javascript logic
+│   ├── index.html     # Main HTML structure
+│   └── ...            # Assets and other scripts
 ├── firebase.json       # Firebase hosting configuration
 ├── .github/
 │   ├── workflows/      # GitHub Actions CI/CD
 │   └── ISSUE_TEMPLATE/ # Issue templates
-└── docs/               # Additional documentation
+└── README.md           # Project documentation
 ```
 
 ### Key Components
