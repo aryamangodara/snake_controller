@@ -69,5 +69,4 @@ node_modules/
 .dataconnect
 
 # Agent files
-.agent/*
-!.agent/skills/
+.agent/**/secrets.json

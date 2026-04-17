@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "github-action-deploy": {
+      "command": "node",
+      "args": ["placeholder/script.js"],
+      "env": {}
+    }
+  }
+}
