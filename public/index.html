@@ -4,7 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Snake Game - Cross Device Controller</title>
-    <link rel="stylesheet" href="style.css">
+    
+    <!-- Split CSS files -->
+    <link rel="stylesheet" href="css/variables.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/desktop.css">
+    <link rel="stylesheet" href="css/mobile.css">
     
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="32x32" href="snake-favicon.png">
@@ -184,10 +189,20 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Distributed JS Files -->
+    <script src="js/config.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/network.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/controller.js"></script>
+    <script src="js/main.js"></script>
     
     <!-- Simple Loading Screen Handler with CSS Override Fix -->
     <script>
+        // Make sure we set the device view based on URL if trying to force mobile
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasSession = urlParams.get('session');
+        
         window.addEventListener('load', function() {
             setTimeout(function() {
                 console.log('🎬 Starting loading screen sequence...');
@@ -206,14 +221,18 @@
                         console.log('✅ Loading screen hidden');
                         
                         // Show appropriate view with !important to override media queries
-                        if (window.innerWidth <= 768) {
+                        // If there is a session URL param, force to mobile view (because that's the controller mode)
+                        if (window.innerWidth <= 768 || hasSession) {
                             console.log('📱 Showing mobile view');
                             mobileView.style.cssText = 'display: block !important';
                             desktopView.style.cssText = 'display: none !important';
+                            // Update state properly
+                            if(typeof sessionManager !== 'undefined') sessionManager.isDesktop = false;
                         } else {
                             console.log('🖥️ Showing desktop view');
                             desktopView.style.cssText = 'display: block !important';
                             mobileView.style.cssText = 'display: none !important';
+                            if(typeof sessionManager !== 'undefined') sessionManager.isDesktop = true;
                         }
                     }, 500);
                 }, 2000);

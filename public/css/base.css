@@ -1,0 +1,133 @@
+/* ==========================================
+   BASE & SHARED STYLES
+   ========================================== */
+   
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+
+html {
+    font-size: var(--font-size-base);
+    font-family: var(--font-family-base);
+    line-height: var(--line-height-normal);
+    color: var(--color-text);
+    background-color: var(--color-background);
+    -webkit-font-smoothing: antialiased;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-family-base);
+    background: linear-gradient(135deg, var(--color-background) 0%, var(--color-surface) 25%, rgba(var(--color-slate-900-rgb), 0.8) 50%, var(--color-surface) 75%, var(--color-background) 100%);
+    color: var(--color-text);
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Animated Background Grid */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        linear-gradient(rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.1) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: gridMove 20s linear infinite;
+    z-index: -1;
+}
+
+@keyframes gridMove {
+    0% { transform: translateX(0) translateY(0); }
+    100% { transform: translateX(50px) translateY(50px); }
+}
+
+/* Floating particles */
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(2px 2px at 20% 30%, var(--color-primary), transparent),
+                radial-gradient(2px 2px at 40% 70%, var(--color-teal-300), transparent),
+                radial-gradient(1px 1px at 60% 10%, var(--color-warning), transparent),
+                radial-gradient(1px 1px at 80% 50%, var(--color-teal-600), transparent),
+                radial-gradient(2px 2px at 90% 20%, var(--color-teal-700), transparent);
+    background-size: 200px 200px, 300px 300px, 150px 150px, 250px 250px, 180px 180px;
+    animation: float 15s ease-in-out infinite;
+    z-index: -1;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-20px) rotate(180deg); }
+}
+
+/* Utilities */
+.hidden {
+    display: none !important;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  color: var(--color-text);
+  letter-spacing: var(--letter-spacing-tight);
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+/* Prevent text selection on interactive elements */
+.center-btn, .btn-connect, .game-title, .code-value, .social-link, .joystick-base, .joystick-handle {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Prevent FOUC (Flash of Unstyled Content) */
+body:not(.loaded) .desktop-view,
+body:not(.loaded) .mobile-view {
+    visibility: hidden;
+}
+
+body.loaded .desktop-view,
+body.loaded .mobile-view {
+    visibility: visible;
+}
+
+/* Base button properties that were shared/imported */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) var(--space-16);
+  border-radius: var(--radius-base);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-standard);
+  border: none;
+  text-decoration: none;
+  position: relative;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
