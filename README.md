@@ -81,10 +81,12 @@ npm install -g firebase-tools
 firebase login
 firebase init hosting
 firebase deploy
+```
 
-# Or serve locally
-python -m http.server 8000
-# Then visit http://localhost:8000
+### 4. Or Serve Locally
+```bash
+npm start
+# Then visit http://localhost:3000
 ```
 
 ## 🎯 How to Play
@@ -149,16 +151,11 @@ Desktop Game State → Session Document → Mobile Button States
 - Local web server for development
 
 ### Running Locally
+You can start a local development server using npm:
 ```bash
-# Simple HTTP server
-python -m http.server 8000
-
-# Or with Node.js
-npx http-server
-
-# Or with PHP
-php -S localhost:8000
+npm start
 ```
+This will start a local server, usually available at http://localhost:3000, and handle all necessary routing for you.
 
 ### Testing Different Modes
 ```

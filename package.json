@@ -2,6 +2,9 @@
   "name": "snake_controller",
   "version": "1.0.0",
   "description": "A modern Snake game with cross-device multiplayer functionality using Firebase",
+  "scripts": {
+    "start": "npx serve -s public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aryamangodara/snake_controller.git"
