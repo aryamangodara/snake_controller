@@ -315,12 +315,12 @@ function connectViaLocalStorage(sessionCode) {
         console.log('✅ Connected via localStorage:', sessionCode);
         
         const gameStateStr = localStorage.getItem(`session_${sessionCode}_state`);
-        const gameStateData = gameStateStr ? JSON.parse(gameStateStr) : { state: GameState.WAITING_FOR_START };
+        const gameStateData = safeParse(gameStateStr, { state: GameState.WAITING_FOR_START });
         updateCenterButtonIcon(gameStateData.state);
-        
+
         window.addEventListener('storage', function(e) {
             if (e.key === `session_${sessionCode}_state`) {
-                const data = JSON.parse(e.newValue || '{}');
+                const data = safeParse(e.newValue, {});
                 if (data.state) {
                     updateCenterButtonIcon(data.state);
                 }
@@ -344,28 +344,29 @@ function showControllerInterface() {
     if (controllerInterface) controllerInterface.style.display = 'block';
 }
 
-function showConnectionSuccess(message = 'Connected! Snake moves continuously!') {
+/**
+ * Writes a status message into the mobile connection-status element.
+ * @param {string} message - Text to display.
+ * @param {string} color - CSS color for the message.
+ */
+function setConnectionStatus(message, color) {
     const statusElement = document.getElementById('mobile-connection-status');
     if (statusElement) {
         statusElement.textContent = message;
-        statusElement.style.color = '#00ff00';
+        statusElement.style.color = color;
     }
+}
+
+function showConnectionSuccess(message = 'Connected! Snake moves continuously!') {
+    setConnectionStatus(message, '#00ff00'); // green
 }
 
 function showConnectionError(message) {
-    const statusElement = document.getElementById('mobile-connection-status');
-    if (statusElement) {
-        statusElement.textContent = message;
-        statusElement.style.color = '#ff1493';
-    }
+    setConnectionStatus(message, '#ff1493'); // pink
 }
 
 function showConnectionStatus(message) {
-    const statusElement = document.getElementById('mobile-connection-status');
-    if (statusElement) {
-        statusElement.textContent = message;
-        statusElement.style.color = '#ff6b35';
-    }
+    setConnectionStatus(message, '#ff6b35'); // orange
 }
 
 function updateCenterButtonIcon(currentState) {

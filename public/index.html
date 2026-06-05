@@ -22,9 +22,8 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     
-    <!-- Different QR Code Libraries - Try multiple sources -->
+    <!-- QR Code generation -->
     <script src="https://unpkg.com/qrious@4.0.2/dist/qrious.min.js"></script>
-    <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
     
     <!-- Font Awesome for social icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -190,6 +189,8 @@
     </div>
 
     <!-- Distributed JS Files -->
+    <script src="js/utils.js"></script>
+    <script src="js/logic.js"></script>
     <script src="js/config.js"></script>
     <script src="js/state.js"></script>
     <script src="js/network.js"></script>
@@ -197,46 +198,35 @@
     <script src="js/controller.js"></script>
     <script src="js/main.js"></script>
     
-    <!-- Simple Loading Screen Handler with CSS Override Fix -->
+    <!-- Loading screen handler: reveal the app as soon as the page is ready -->
     <script>
-        // Make sure we set the device view based on URL if trying to force mobile
+        // A session code in the URL means this device is the controller (mobile) view.
         const urlParams = new URLSearchParams(window.location.search);
         const hasSession = urlParams.get('session');
-        
+
+        function revealApp() {
+            const loadingScreen = document.getElementById('loading-screen');
+            const desktopView = document.getElementById('desktop-view');
+            const mobileView = document.getElementById('mobile-view');
+
+            // cssText uses !important to override the media-query CSS at the top of <head>.
+            if (loadingScreen) loadingScreen.style.cssText = 'display: none !important';
+
+            const isController = window.innerWidth <= 768 || hasSession;
+            if (isController) {
+                if (mobileView) mobileView.style.cssText = 'display: block !important';
+                if (desktopView) desktopView.style.cssText = 'display: none !important';
+                if (typeof sessionManager !== 'undefined') sessionManager.isDesktop = false;
+            } else {
+                if (desktopView) desktopView.style.cssText = 'display: block !important';
+                if (mobileView) mobileView.style.cssText = 'display: none !important';
+                if (typeof sessionManager !== 'undefined') sessionManager.isDesktop = true;
+            }
+        }
+
+        // Reveal on load; a tiny delay lets the spinner paint at least one frame for a smooth fade.
         window.addEventListener('load', function() {
-            setTimeout(function() {
-                console.log('🎬 Starting loading screen sequence...');
-                
-                setTimeout(function() {
-                    const loadingScreen = document.getElementById('loading-screen');
-                    const desktopView = document.getElementById('desktop-view');
-                    const mobileView = document.getElementById('mobile-view');
-                    
-                    console.log('⏰ Hiding loading screen...');
-                    
-                    // Hide loading screen with !important
-                    loadingScreen.style.cssText = 'display: none !important';
-                    
-                    setTimeout(function() {
-                        console.log('✅ Loading screen hidden');
-                        
-                        // Show appropriate view with !important to override media queries
-                        // If there is a session URL param, force to mobile view (because that's the controller mode)
-                        if (window.innerWidth <= 768 || hasSession) {
-                            console.log('📱 Showing mobile view');
-                            mobileView.style.cssText = 'display: block !important';
-                            desktopView.style.cssText = 'display: none !important';
-                            // Update state properly
-                            if(typeof sessionManager !== 'undefined') sessionManager.isDesktop = false;
-                        } else {
-                            console.log('🖥️ Showing desktop view');
-                            desktopView.style.cssText = 'display: block !important';
-                            mobileView.style.cssText = 'display: none !important';
-                            if(typeof sessionManager !== 'undefined') sessionManager.isDesktop = true;
-                        }
-                    }, 500);
-                }, 2000);
-            }, 100);
+            setTimeout(revealApp, 150);
         });
     </script>
 </body>

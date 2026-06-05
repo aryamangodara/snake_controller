@@ -6,24 +6,55 @@
  * Generates a new session for the desktop app, creating a 6-digit code,
  * setting up the database listeners, and generating the QR code.
  */
-function generateNewSession() {
-    const sessionCode = Math.floor(100000 + Math.random() * 900000).toString();
+async function generateNewSession() {
+    const sessionCode = await generateUniqueSessionCode();
     sessionManager.currentSession = sessionCode;
-    
+
     console.log('🎮 Generated session code:', sessionCode);
-    
+
     const sessionCodeElement = document.getElementById('session-code');
     if (sessionCodeElement) {
         sessionCodeElement.textContent = sessionCode;
     }
-    
+
     generateQRCode(sessionCode);
-    
+
     if (firebaseReady) {
         setupRobustHybridSession(sessionCode);
     } else {
         setupLocalStorageSession(sessionCode);
     }
+}
+
+/**
+ * Produces a random 6-digit code. When Firebase is available, verifies the code
+ * is not already an active session before claiming it, so two desktops cannot
+ * collide on the same code. Falls back to an unverified code if the lookups fail.
+ * @param {number} [maxAttempts=5] - How many codes to try before giving up.
+ * @returns {Promise<string>} A 6-digit session code.
+ */
+async function generateUniqueSessionCode(maxAttempts = 5) {
+    const randomCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+    if (!firebaseReady || !firestore) {
+        return randomCode();
+    }
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const code = randomCode();
+        try {
+            const existing = await firestore.collection('sessions').doc(code).get();
+            if (!existing.exists) return code;
+            console.warn(`⚠️ Session code ${code} already in use, regenerating...`);
+        } catch (error) {
+            // If we can't verify (offline/permission), just use the candidate.
+            console.warn('Could not verify session-code uniqueness, using candidate.', error);
+            return code;
+        }
+    }
+
+    console.warn('Could not find an unused session code; using a random one.');
+    return randomCode();
 }
 
 /**
@@ -75,6 +106,10 @@ async function setupRobustHybridSession(sessionCode) {
             initialized: true
         });
         console.log('✅ Realtime Database path initialized');
+
+        // Auto-remove this controller node if the host disconnects, so abandoned
+        // sessions clean themselves up server-side (backstop for beforeunload).
+        sessionManager.realtimeRef.onDisconnect().remove();
         
         // 4. Listen for Realtime Database changes
         sessionManager.realtimeRef.on('value', (snapshot) => {
@@ -156,13 +191,13 @@ function setupLocalStorageSession(sessionCode) {
     // Listen for localStorage changes
     window.addEventListener('storage', function(e) {
         if (e.key === `session_${sessionCode}_joystick`) {
-            const data = JSON.parse(e.newValue || '{}');
+            const data = safeParse(e.newValue, {});
             if (data.joystick) {
                 handleJoystickInputFromMobile(data.joystick);
                 updateConnectionStatus('Mobile controller connected (localStorage) ✅');
             }
         } else if (e.key === `session_${sessionCode}_action`) {
-            const data = JSON.parse(e.newValue || '{}');
+            const data = safeParse(e.newValue, {});
             if (data.action) {
                 handleGameActionFromMobile(data.action);
                 localStorage.removeItem(`session_${sessionCode}_action`);
@@ -210,73 +245,68 @@ function generateQRCode(sessionCode) {
     }
     
     if (!qrGenerated) {
-        setTimeout(() => {
-            drawPlaceholderQR(qrCanvas, sessionCode);
-            if (qrLoading) qrLoading.style.display = 'none';
-            if (qrContainer) qrContainer.style.display = 'block';
-        }, 1000);
+        renderJoinFallback(qrContainer, sessionCode, gameUrl);
+        if (qrLoading) qrLoading.style.display = 'none';
+        if (qrContainer) qrContainer.style.display = 'block';
     }
 }
 
 /**
- * Draws a backup grid pattern if QRious fails to load
+ * Fallback shown when the QR library is unavailable: render the join URL and
+ * session code as selectable, copyable text so the player can still connect by
+ * typing the link or the code on their phone. (No fake/un-scannable QR.)
+ * @param {HTMLElement} container - The QR container element.
+ * @param {string} sessionCode - The 6-digit session code.
+ * @param {string} gameUrl - The full controller URL embedding the session code.
  */
-function drawPlaceholderQR(canvas, sessionCode) {
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, 150, 150);
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(5, 5, 140, 140);
-    ctx.fillStyle = '#000000';
-    
-    // QR corners
-    [[15, 15], [110, 15], [15, 110]].forEach(([x, y]) => {
-        ctx.fillRect(x, y, 25, 25);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(x + 5, y + 5, 15, 15);
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(x + 8, y + 8, 9, 9);
-    });
-    
-    // Random pattern
-    for (let i = 0; i < 20; i++) {
-        const x = Math.floor(Math.random() * 100) + 25;
-        const y = Math.floor(Math.random() * 100) + 25;
-        ctx.fillRect(x, y, 3, 3);
+function renderJoinFallback(container, sessionCode, gameUrl) {
+    if (!container) return;
+
+    // Hide the empty QR canvas, if present.
+    const canvas = container.querySelector('#qr-canvas');
+    if (canvas) canvas.style.display = 'none';
+
+    // Reuse a single fallback node across re-renders.
+    let fallback = container.querySelector('.qr-fallback');
+    if (!fallback) {
+        fallback = document.createElement('div');
+        fallback.className = 'qr-fallback';
+        fallback.style.cssText = 'text-align:center;padding:8px;font-size:12px;line-height:1.4;';
+        container.appendChild(fallback);
     }
-    
-    ctx.font = 'bold 10px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('SCAN QR', 75, 60);
-    ctx.font = '8px Arial';
-    ctx.fillText(`Code: ${sessionCode}`, 75, 75);
+    fallback.innerHTML = '';
+
+    const note = document.createElement('p');
+    note.textContent = 'QR unavailable — open this on your phone:';
+
+    // Use textContent/href (not innerHTML) so the code can never inject markup.
+    const link = document.createElement('a');
+    link.href = gameUrl;
+    link.textContent = gameUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.style.cssText = 'word-break:break-all;display:block;margin:6px 0;';
+
+    const code = document.createElement('p');
+    code.textContent = `or enter code: ${sessionCode}`;
+
+    fallback.append(note, link, code);
 }
 
 /**
  * Updates joystick parameters locally from mobile pushes
  */
 function handleJoystickInputFromMobile(joystickInput) {
-    if (gameState.currentState === GameState.PLAYING) {
-        gameState.joystickInput = joystickInput;
-        
-        // Calculate direction and speed from joystick
-        const magnitude = Math.sqrt(joystickInput.x * joystickInput.x + joystickInput.y * joystickInput.y);
-        
-        if (magnitude > 0.1) {
-            // Update target direction based on joystick
-            gameState.targetDirection = Math.atan2(joystickInput.y, joystickInput.x);
-            
-            // Speed boost based on joystick magnitude
-            const speedBoost = Math.min(magnitude, 1) * gameConfig.maxSpeedBoost;
-            gameState.currentSpeed = gameState.baseSpeed + speedBoost;
-        } else {
-            // No joystick input - snake moves at constant base speed
-            gameState.currentSpeed = gameState.baseSpeed;
-        }
+    if (gameState.currentState !== GameState.PLAYING) return;
+
+    gameState.joystickInput = joystickInput;
+
+    // Map the joystick vector to a heading + speed (see logic.js).
+    const control = joystickToControl(joystickInput, gameState.baseSpeed, gameConfig);
+    if (control.active) {
+        gameState.targetDirection = control.targetDirection;
     }
+    gameState.currentSpeed = control.speed;
 }
 
 /**
@@ -317,12 +347,26 @@ async function updateGameStateInFirebase() {
     }
 }
 
-// Cleanup resources on page unload
+// Cleanup resources on page unload.
 window.addEventListener('beforeunload', function() {
     if (sessionManager.firestoreUnsubscribe) {
         sessionManager.firestoreUnsubscribe();
     }
     if (sessionManager.realtimeRef) {
         sessionManager.realtimeRef.off();
+    }
+
+    // Only the desktop host owns the session lifecycle. Remove the session on exit
+    // so abandoned sessions don't accumulate in Firestore / Realtime DB. These are
+    // best-effort (the browser may cut the request short); onDisconnect().remove()
+    // is the reliable RTDB backstop, and a Firestore TTL policy on `lastActivity`
+    // is recommended for guaranteed Firestore cleanup (see .agent/system/firebase_schema.md).
+    if (sessionManager.isDesktop && sessionManager.connectionType === 'hybrid') {
+        if (sessionManager.realtimeRef) {
+            sessionManager.realtimeRef.remove().catch(() => {});
+        }
+        if (firestore && sessionManager.currentSession) {
+            firestore.collection('sessions').doc(sessionManager.currentSession).delete().catch(() => {});
+        }
     }
 });

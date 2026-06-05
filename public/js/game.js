@@ -128,23 +128,12 @@ function updateGame(currentTime) {
  * Eases the snake logic towards the target rotation from the joystick
  */
 function updateSnakeDirection() {
-    // Smooth direction interpolation towards target
-    let angleDiff = gameState.targetDirection - gameState.direction;
-    
-    // Normalize angle difference to [-π, π]
-    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-    
-    // Apply smooth turning
-    if (Math.abs(angleDiff) > gameConfig.turnSpeed) {
-        gameState.direction += Math.sign(angleDiff) * gameConfig.turnSpeed;
-    } else {
-        gameState.direction = gameState.targetDirection;
-    }
-    
-    // Normalize direction to [0, 2π]
-    while (gameState.direction < 0) gameState.direction += 2 * Math.PI;
-    while (gameState.direction >= 2 * Math.PI) gameState.direction -= 2 * Math.PI;
+    // Smoothly interpolate the heading toward the joystick target (see logic.js).
+    gameState.direction = stepDirection(
+        gameState.direction,
+        gameState.targetDirection,
+        gameConfig.turnSpeed
+    );
 }
 
 /**
@@ -161,38 +150,25 @@ function moveSnake() {
     head.y += Math.sin(gameState.direction) * gameState.currentSpeed;
     
     // Wall collision detection
-    if (head.x < gameConfig.wallMargin || 
-        head.x > gameConfig.boardSize.width - gameConfig.wallMargin ||
-        head.y < gameConfig.wallMargin || 
-        head.y > gameConfig.boardSize.height - gameConfig.wallMargin) {
+    if (hitsWall(head, gameConfig)) {
         console.log('💥 Wall collision!');
         gameOver();
         return;
     }
-    
+
     // Self collision detection
-    for (let i = gameConfig.minSelfCollisionSegments; i < gameState.snake.length; i++) {
-        const segment = gameState.snake[i];
-        const distance = Math.sqrt(
-            Math.pow(head.x - segment.x, 2) + Math.pow(head.y - segment.y, 2)
-        );
-        if (distance < gameConfig.snakeSegmentSize * 0.8) {
-            console.log('💥 Self collision!');
-            gameOver();
-            return;
-        }
+    if (hitsSelf(head, gameState.snake, gameConfig)) {
+        console.log('💥 Self collision!');
+        gameOver();
+        return;
     }
-    
+
     // Update head position
     gameState.snake[0] = head;
     updateSnakeSegments(prevHead);
-    
+
     // Food collision detection
-    const foodDistance = Math.sqrt(
-        Math.pow(head.x - gameState.food.x, 2) + Math.pow(head.y - gameState.food.y, 2)
-    );
-    
-    if (foodDistance < (gameConfig.snakeSegmentSize + gameConfig.foodSize)) {
+    if (eatsFood(head, gameState.food, gameConfig)) {
         console.log('🍎 Food collected! Score:', gameState.score + 10);
         gameState.score += 10;
         updateScore();

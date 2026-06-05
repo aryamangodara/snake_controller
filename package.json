@@ -3,16 +3,22 @@
   "version": "1.0.0",
   "description": "A modern Snake game with cross-device multiplayer functionality using Firebase",
   "scripts": {
-    "start": "npx serve -s public"
+    "start": "npx serve -s public",
+    "lint": "eslint public/js tests",
+    "format": "prettier --write \"public/**/*.{js,css,html}\" \"tests/**/*.js\"",
+    "test": "vitest run"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aryamangodara/snake_controller.git"
   },
   "homepage": "https://github.com/aryamangodara/snake_controller#readme",
-  "author": "Aryaman Godara <your.email@example.com>",
+  "author": "Aryaman Godara <godara.aryaman@gmail.com>",
   "license": "MIT",
   "devDependencies": {
-    "firebase-tools": "^13.0.0"
+    "eslint": "^8.57.0",
+    "firebase-tools": "^13.0.0",
+    "prettier": "^3.3.3",
+    "vitest": "^1.6.0"
   }
 }
