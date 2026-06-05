@@ -16,6 +16,9 @@
     <link rel="icon" type="image/png" sizes="16x16" href="snake-favicon.png">
     <link rel="apple-touch-icon" href="snake-logo.png">
     <meta name="theme-color" content="#21808d">
+
+    <!-- PWA: installable + offline shell -->
+    <link rel="manifest" href="manifest.json">
     
     <!-- Firebase CDN - v8 Compatibility Mode for Realtime Database -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -113,7 +116,8 @@
                                 <span class="score-label">Final Score:</span>
                                 <span id="final-score" class="score-value">0</span>
                             </div>
-                            <p class="restart-prompt">Use your phone controller to play again</p>
+                            <p id="new-high-score" class="new-high-score hidden">🏆 New High Score!</p>
+                            <p class="restart-prompt">Press Space or use your phone to play again</p>
                         </div>
                     </div>
                 </div>
@@ -124,6 +128,11 @@
                             <span class="score-label">Score</span>
                             <span id="score" class="score-value">0</span>
                         </div>
+                        <div class="current-score">
+                            <span class="score-label">Best</span>
+                            <span id="high-score" class="score-value">0</span>
+                        </div>
+                        <button id="mute-btn" class="mute-btn" type="button" aria-label="Mute sound">🔊</button>
                     </div>
 
                     <div class="connection-card">
@@ -193,6 +202,8 @@
     <script src="js/logic.js"></script>
     <script src="js/config.js"></script>
     <script src="js/state.js"></script>
+    <script src="js/leaderboard.js"></script>
+    <script src="js/sound.js"></script>
     <script src="js/network.js"></script>
     <script src="js/game.js"></script>
     <script src="js/controller.js"></script>
@@ -228,6 +239,16 @@
         window.addEventListener('load', function() {
             setTimeout(revealApp, 150);
         });
+    </script>
+
+    <!-- PWA: register the offline-shell service worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('sw.js')
+                    .catch(function(err) { console.warn('Service worker registration failed:', err); });
+            });
+        }
     </script>
 </body>
 </html>

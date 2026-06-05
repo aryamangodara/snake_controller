@@ -10,7 +10,7 @@ service cloud.firestore {
     match /sessions/{code} {
       function validShape() {
         return request.resource.data.keys().hasOnly(
-          ['created', 'connected', 'gameState', 'gameAction', 'lastActivity', 'version']
+          ['created', 'connected', 'gameState', 'gameAction', 'lastActivity', 'version', 'feedback']
         );
       }
 

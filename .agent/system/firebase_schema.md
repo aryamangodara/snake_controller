@@ -15,6 +15,7 @@ Collection `sessions/{code}` where `{code}` is a 6-digit string. One document pe
 | `gameAction`   | string    | mobile     | `start` / `restart`; desktop clears it to `null` |
 | `lastActivity` | timestamp | both       | server timestamp; touched on each write          |
 | `version`      | number    | desktop    | debug marker                                      |
+| `feedback`     | map       | desktop    | `{ type, at }` one-shot haptic cue for the phone  |
 
 Rules (`firestore.rules`): reads/deletes require a 6-digit `{code}`; creates/updates additionally
 require the document to contain only the keys above. All other collections are denied. There is no

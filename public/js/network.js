@@ -347,6 +347,21 @@ async function updateGameStateInFirebase() {
     }
 }
 
+/**
+ * Sends a one-shot haptic feedback event to the connected phone (which vibrates).
+ * Reuses the Firestore session doc the controller already listens to. Best-effort;
+ * no-op outside hybrid mode. Vibration only fires on devices that support it.
+ * @param {'food'|'crash'} type
+ */
+function sendHapticFeedback(type) {
+    if (sessionManager.connectionType === 'hybrid' && firestore && sessionManager.currentSession) {
+        firestore.collection('sessions').doc(sessionManager.currentSession).update({
+            feedback: { type: type, at: Date.now() },
+            lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+        }).catch(() => {});
+    }
+}
+
 // Cleanup resources on page unload.
 window.addEventListener('beforeunload', function() {
     if (sessionManager.firestoreUnsubscribe) {

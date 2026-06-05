@@ -202,12 +202,33 @@ function moveJoystickToPosition(e) {
 function handleCenterButtonPress() {
     const centerBtn = document.getElementById('btn-center');
     if (!centerBtn || centerBtn.disabled) return;
-    
+
     const currentIcon = centerBtn.querySelector('.center-icon').textContent;
     if (currentIcon === '▶') {
         sendGameAction('start');
     } else if (currentIcon === '↻') {
         sendGameAction('restart');
+    }
+}
+
+// Tracks the last feedback event we vibrated for, so repeated snapshot
+// deliveries of the same event don't buzz more than once.
+let lastFeedbackAt = 0;
+
+/**
+ * Vibrate the phone in response to a feedback event from the desktop host.
+ * Vibration is supported mainly on Android; elsewhere this is a no-op.
+ * @param {{type:string, at:number}} feedback
+ */
+function handleHapticFeedback(feedback) {
+    if (!feedback || typeof feedback.at !== 'number' || feedback.at === lastFeedbackAt) return;
+    lastFeedbackAt = feedback.at;
+
+    if (!('vibrate' in navigator)) return;
+    if (feedback.type === 'crash') {
+        navigator.vibrate([100, 50, 100]);
+    } else if (feedback.type === 'food') {
+        navigator.vibrate(40);
     }
 }
 
@@ -256,6 +277,9 @@ async function connectViaRobustHybrid(sessionCode) {
                     const data = doc.data();
                     if (data.gameState) {
                         updateCenterButtonIcon(data.gameState.state);
+                    }
+                    if (data.feedback) {
+                        handleHapticFeedback(data.feedback);
                     }
                 }
             }, (error) => {

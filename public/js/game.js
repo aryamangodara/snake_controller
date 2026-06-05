@@ -17,9 +17,78 @@ function initializeDesktopGame() {
     ctx = canvas.getContext('2d');
     canvas.width = gameConfig.boardSize.width;
     canvas.height = gameConfig.boardSize.height;
-    
+
     generateNewSession();
+    setupKeyboardControls();
+
+    // Sound + leaderboard UI wiring (desktop only).
+    updateHighScoreDisplay();
+    updateMuteButton();
+    const muteBtn = document.getElementById('mute-btn');
+    if (muteBtn) muteBtn.addEventListener('click', toggleMute);
+
     startGameLoop();
+}
+
+// Maps keyboard keys to direction vectors (screen coords: +y is down).
+const KEY_VECTORS = {
+    arrowup: { x: 0, y: -1 }, w: { x: 0, y: -1 },
+    arrowdown: { x: 0, y: 1 }, s: { x: 0, y: 1 },
+    arrowleft: { x: -1, y: 0 }, a: { x: -1, y: 0 },
+    arrowright: { x: 1, y: 0 }, d: { x: 1, y: 0 }
+};
+const activeDirectionKeys = new Set();
+
+/**
+ * Lets the desktop host play with the keyboard (arrows / WASD to steer, Space or
+ * Enter to start/restart) instead of needing a phone controller.
+ */
+function setupKeyboardControls() {
+    document.addEventListener('keydown', (e) => {
+        const key = e.key.toLowerCase();
+
+        if (key === ' ' || key === 'enter') {
+            e.preventDefault();
+            if (gameState.currentState === GameState.WAITING_FOR_START) startGame();
+            else if (gameState.currentState === GameState.GAME_OVER) restartGame();
+            return;
+        }
+
+        if (KEY_VECTORS[key]) {
+            e.preventDefault();
+            activeDirectionKeys.add(key);
+            applyKeyboardDirection();
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        const key = e.key.toLowerCase();
+        if (KEY_VECTORS[key]) {
+            activeDirectionKeys.delete(key);
+            applyKeyboardDirection();
+        }
+    });
+}
+
+/**
+ * Combines all currently-held direction keys into a heading + speed, reusing the
+ * same joystick mapping so keyboard and phone control feel identical.
+ */
+function applyKeyboardDirection() {
+    let x = 0, y = 0;
+    for (const key of activeDirectionKeys) {
+        x += KEY_VECTORS[key].x;
+        y += KEY_VECTORS[key].y;
+    }
+
+    if (x === 0 && y === 0) {
+        gameState.currentSpeed = gameState.baseSpeed; // no keys held: coast
+        return;
+    }
+
+    const control = joystickToControl({ x, y }, gameState.baseSpeed, gameConfig);
+    if (control.active) gameState.targetDirection = control.targetDirection;
+    gameState.currentSpeed = control.speed;
 }
 
 /**
@@ -42,6 +111,7 @@ function startGameLoop() {
 function startGame() {
     console.log('🚀 Starting game with continuous snake movement!');
     gameState.currentState = GameState.PLAYING;
+    playStartSound();
     gameState.direction = 0; // Start facing right
     gameState.targetDirection = 0;
     gameState.baseSpeed = gameConfig.baseSpeed;
@@ -172,6 +242,8 @@ function moveSnake() {
         console.log('🍎 Food collected! Score:', gameState.score + 10);
         gameState.score += 10;
         updateScore();
+        playFoodSound();
+        sendHapticFeedback('food');
         generateFood();
         addSnakeSegment();
         
@@ -390,17 +462,25 @@ function updateScore() {
 function gameOver() {
     console.log('💀 Game over! Final score:', gameState.score, 'Snake length:', gameState.snake.length);
     gameState.currentState = GameState.GAME_OVER;
-    
+    playCrashSound();
+    sendHapticFeedback('crash');
+
     const finalScoreElement = document.getElementById('final-score');
     if (finalScoreElement) {
         finalScoreElement.textContent = gameState.score.toString();
     }
-    
+
+    // Record the run and surface a "new best" badge when earned.
+    const isNewBest = recordScore(gameState.score);
+    updateHighScoreDisplay();
+    const newHighEl = document.getElementById('new-high-score');
+    if (newHighEl) newHighEl.classList.toggle('hidden', !isNewBest);
+
     const gameOverScreen = document.getElementById('game-over');
     if (gameOverScreen) {
         gameOverScreen.classList.remove('hidden');
     }
-    
+
     updateGameStateInFirebase();
 }
 
