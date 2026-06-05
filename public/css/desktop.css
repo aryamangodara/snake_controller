@@ -426,3 +426,32 @@
         height: auto;
     }
 }
+
+/* --- Gameplay features: Best-score spacing, sound toggle, new-high badge --- */
+.score-card .current-score + .current-score {
+    margin-top: var(--space-16);
+}
+
+.mute-btn {
+    margin-top: var(--space-16);
+    background: transparent;
+    border: 2px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.5);
+    border-radius: var(--radius-lg);
+    color: var(--color-text, #ffffff);
+    font-size: var(--font-size-xl);
+    line-height: 1;
+    padding: var(--space-8) var(--space-16);
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.mute-btn:hover {
+    background: rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.15);
+}
+
+.new-high-score {
+    color: #ffd166;
+    font-weight: var(--font-weight-bold);
+    margin: var(--space-16) 0 0;
+    text-shadow: 0 0 8px rgba(255, 209, 102, 0.6);
+}

@@ -1,0 +1,16 @@
+{
+  "name": "Cross-Device Snake Game",
+  "short_name": "Snake",
+  "description": "Play Snake on your screen and control it with your phone as a wireless joystick.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0a0a",
+  "theme_color": "#21808d",
+  "icons": [
+    { "src": "snake-logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "snake-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "snake-favicon.png", "sizes": "32x32", "type": "image/png" }
+  ]
+}

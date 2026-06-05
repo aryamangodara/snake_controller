@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Ephemeral cross-device game sessions, keyed by a 6-digit code.
+    // This app has no authentication, so access is scoped by path + document
+    // shape rather than per-user ownership. If Anonymous Auth is added later,
+    // store an ownerId on create and require request.auth.uid == ownerId here.
+    match /sessions/{code} {
+      function validShape() {
+        return request.resource.data.keys().hasOnly(
+          ['created', 'connected', 'gameState', 'gameAction', 'lastActivity', 'version', 'feedback']
+        );
+      }
+
+      allow read, delete: if code.matches('^[0-9]{6}$');
+      allow create, update: if code.matches('^[0-9]{6}$') && validShape();
+    }
+
+    // Everything else is denied by default (no other match blocks grant access).
+  }
+}

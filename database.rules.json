@@ -1,19 +1,19 @@
 {
   "rules": {
-    "sessions": {
+    "controllers": {
       "$sessionId": {
-        ".read": true,
-        ".write": true,
-        ".validate": "newData.hasChildren(['created', 'connected'])",
-        "created": {
-          ".validate": "newData.isNumber()"
+        ".read": "$sessionId.matches(/^[0-9]{6}$/)",
+        ".write": "$sessionId.matches(/^[0-9]{6}$/)",
+        "connected": { ".validate": "newData.isBoolean()" },
+        "initialized": { ".validate": "newData.isBoolean()" },
+        "timestamp": { ".validate": "newData.isNumber()" },
+        "joystick": {
+          ".validate": "newData.hasChildren(['x', 'y'])",
+          "x": { ".validate": "newData.isNumber() && newData.val() >= -1.01 && newData.val() <= 1.01" },
+          "y": { ".validate": "newData.isNumber() && newData.val() >= -1.01 && newData.val() <= 1.01" },
+          "$other": { ".validate": false }
         },
-        "connected": {
-          ".validate": "newData.isBoolean()"
-        },
-        "lastDirection": {
-          ".validate": "newData.isString() && (newData.val() == 'up' || newData.val() == 'down' || newData.val() == 'left' || newData.val() == 'right')"
-        }
+        "$other": { ".validate": false }
       }
     }
   }

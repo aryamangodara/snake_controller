@@ -202,12 +202,33 @@ function moveJoystickToPosition(e) {
 function handleCenterButtonPress() {
     const centerBtn = document.getElementById('btn-center');
     if (!centerBtn || centerBtn.disabled) return;
-    
+
     const currentIcon = centerBtn.querySelector('.center-icon').textContent;
     if (currentIcon === '▶') {
         sendGameAction('start');
     } else if (currentIcon === '↻') {
         sendGameAction('restart');
+    }
+}
+
+// Tracks the last feedback event we vibrated for, so repeated snapshot
+// deliveries of the same event don't buzz more than once.
+let lastFeedbackAt = 0;
+
+/**
+ * Vibrate the phone in response to a feedback event from the desktop host.
+ * Vibration is supported mainly on Android; elsewhere this is a no-op.
+ * @param {{type:string, at:number}} feedback
+ */
+function handleHapticFeedback(feedback) {
+    if (!feedback || typeof feedback.at !== 'number' || feedback.at === lastFeedbackAt) return;
+    lastFeedbackAt = feedback.at;
+
+    if (!('vibrate' in navigator)) return;
+    if (feedback.type === 'crash') {
+        navigator.vibrate([100, 50, 100]);
+    } else if (feedback.type === 'food') {
+        navigator.vibrate(40);
     }
 }
 
@@ -256,6 +277,9 @@ async function connectViaRobustHybrid(sessionCode) {
                     const data = doc.data();
                     if (data.gameState) {
                         updateCenterButtonIcon(data.gameState.state);
+                    }
+                    if (data.feedback) {
+                        handleHapticFeedback(data.feedback);
                     }
                 }
             }, (error) => {
@@ -315,12 +339,12 @@ function connectViaLocalStorage(sessionCode) {
         console.log('✅ Connected via localStorage:', sessionCode);
         
         const gameStateStr = localStorage.getItem(`session_${sessionCode}_state`);
-        const gameStateData = gameStateStr ? JSON.parse(gameStateStr) : { state: GameState.WAITING_FOR_START };
+        const gameStateData = safeParse(gameStateStr, { state: GameState.WAITING_FOR_START });
         updateCenterButtonIcon(gameStateData.state);
-        
+
         window.addEventListener('storage', function(e) {
             if (e.key === `session_${sessionCode}_state`) {
-                const data = JSON.parse(e.newValue || '{}');
+                const data = safeParse(e.newValue, {});
                 if (data.state) {
                     updateCenterButtonIcon(data.state);
                 }
@@ -344,28 +368,29 @@ function showControllerInterface() {
     if (controllerInterface) controllerInterface.style.display = 'block';
 }
 
-function showConnectionSuccess(message = 'Connected! Snake moves continuously!') {
+/**
+ * Writes a status message into the mobile connection-status element.
+ * @param {string} message - Text to display.
+ * @param {string} color - CSS color for the message.
+ */
+function setConnectionStatus(message, color) {
     const statusElement = document.getElementById('mobile-connection-status');
     if (statusElement) {
         statusElement.textContent = message;
-        statusElement.style.color = '#00ff00';
+        statusElement.style.color = color;
     }
+}
+
+function showConnectionSuccess(message = 'Connected! Snake moves continuously!') {
+    setConnectionStatus(message, '#00ff00'); // green
 }
 
 function showConnectionError(message) {
-    const statusElement = document.getElementById('mobile-connection-status');
-    if (statusElement) {
-        statusElement.textContent = message;
-        statusElement.style.color = '#ff1493';
-    }
+    setConnectionStatus(message, '#ff1493'); // pink
 }
 
 function showConnectionStatus(message) {
-    const statusElement = document.getElementById('mobile-connection-status');
-    if (statusElement) {
-        statusElement.textContent = message;
-        statusElement.style.color = '#ff6b35';
-    }
+    setConnectionStatus(message, '#ff6b35'); // orange
 }
 
 function updateCenterButtonIcon(currentState) {
