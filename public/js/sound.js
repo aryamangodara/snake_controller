@@ -22,9 +22,9 @@ function getAudioContext() {
  * @param {number} freq - Frequency in Hz.
  * @param {number} durationMs - Length in milliseconds.
  * @param {OscillatorType} [type='sine']
- * @param {number} [gainValue=0.08] - Peak gain (0-1).
+ * @param {number} [gainValue=0.3] - Peak gain (0-1).
  */
-function playTone(freq, durationMs, type = 'sine', gainValue = 0.08) {
+function playTone(freq, durationMs, type = 'sine', gainValue = 0.3) {
     if (soundMuted) return;
     const ctx = getAudioContext();
     if (!ctx) return;
@@ -45,15 +45,15 @@ function playTone(freq, durationMs, type = 'sine', gainValue = 0.08) {
 }
 
 function playFoodSound() {
-    playTone(660, 90, 'square', 0.06);
+    playTone(660, 110, 'square', 0.28);
 }
 
 function playCrashSound() {
-    playTone(140, 350, 'sawtooth', 0.12);
+    playTone(140, 350, 'sawtooth', 0.45);
 }
 
 function playStartSound() {
-    playTone(520, 120, 'triangle', 0.08);
+    playTone(520, 120, 'triangle', 0.3);
 }
 
 /**
