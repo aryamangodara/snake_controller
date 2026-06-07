@@ -73,8 +73,10 @@ function toggleMute() {
 
 function updateMuteButton() {
     const btn = document.getElementById('mute-btn');
-    if (btn) {
-        btn.textContent = soundMuted ? '🔇' : '🔊';
-        btn.setAttribute('aria-label', soundMuted ? 'Unmute sound' : 'Mute sound');
+    if (!btn) return;
+    const icon = btn.querySelector('i');
+    if (icon) {
+        icon.className = soundMuted ? 'fas fa-volume-xmark' : 'fas fa-volume-high';
     }
+    btn.setAttribute('aria-label', soundMuted ? 'Unmute sound' : 'Mute sound');
 }

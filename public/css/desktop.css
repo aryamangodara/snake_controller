@@ -192,7 +192,7 @@
     display: flex;
     flex: 1;
     gap: 40px;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     min-height: 0;
 }
@@ -427,26 +427,48 @@
     }
 }
 
-/* --- Gameplay features: Best-score spacing, sound toggle, new-high badge --- */
+/* --- Gameplay features: Score/Best layout, sound toggle, new-high badge --- */
+/* Score and Best as a centered stat pair, separated by a subtle divider. */
+.score-card {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0;
+    padding: var(--space-16) var(--space-20);
+}
+
+.score-card .current-score {
+    padding: 0 var(--space-32);
+}
+
 .score-card .current-score + .current-score {
-    margin-top: var(--space-16);
+    border-left: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.35);
 }
 
-.mute-btn {
-    margin-top: var(--space-16);
-    background: transparent;
-    border: 2px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.5);
-    border-radius: var(--radius-lg);
-    color: var(--color-text, #ffffff);
-    font-size: var(--font-size-xl);
-    line-height: 1;
-    padding: var(--space-8) var(--space-16);
+.score-card .current-score .score-label {
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-8, 8px);
+}
+
+.score-card .current-score .score-value {
+    font-size: var(--font-size-2xl);
+}
+
+/* Mute toggle: a <button> styled to match the LinkedIn/Instagram social links. */
+.social-link.mute-link {
+    background: linear-gradient(45deg, var(--color-warning), var(--color-primary));
+    color: var(--color-surface);
+    box-shadow: var(--shadow-md);
+    border: none;
+    padding: 0;
     cursor: pointer;
-    transition: background 0.15s ease;
+    font-family: inherit;
 }
 
-.mute-btn:hover {
-    background: rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.15);
+.social-link.mute-link:hover {
+    background: linear-gradient(45deg, var(--color-primary), var(--color-warning));
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: var(--shadow-lg);
 }
 
 .new-high-score {
