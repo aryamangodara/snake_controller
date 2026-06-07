@@ -54,7 +54,9 @@ jobs:
 
       - name: 🚀 Deploy to Firebase
         if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-        run: firebase deploy --only hosting,firestore,database --token "${{ secrets.FIREBASE_TOKEN }}" --non-interactive
+        # Rules deploy is HELD until firestore.rules / database.rules.json are tested
+        # against a scratch project. To ship rules, restore: --only hosting,firestore,database
+        run: firebase deploy --only hosting --token "${{ secrets.FIREBASE_TOKEN }}" --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
