@@ -112,6 +112,7 @@
             <div class="game-area">
                 <div class="game-board-container">
                     <canvas id="game-canvas" width="600" height="600"></canvas>
+                    <div id="combo-display" class="combo-display hidden"></div>
                     <div id="game-over" class="game-over hidden">
                         <div class="game-over-content">
                             <h2>Game Over!</h2>
@@ -136,6 +137,10 @@
                             <span id="high-score" class="score-value">0</span>
                         </div>
                     </div>
+
+                    <p class="controls-hint">
+                        <kbd>Space</kbd> start · <kbd>↑ ↓ ← →</kbd> / <kbd>WASD</kbd> steer · or 📱 scan to play from your phone
+                    </p>
 
                     <div class="connection-card">
                         <div class="session-code">
@@ -206,6 +211,7 @@
     <script src="js/state.js"></script>
     <script src="js/leaderboard.js"></script>
     <script src="js/sound.js"></script>
+    <script src="js/effects.js"></script>
     <script src="js/network.js"></script>
     <script src="js/game.js"></script>
     <script src="js/controller.js"></script>

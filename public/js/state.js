@@ -37,7 +37,9 @@ let gameState = {
     lastMoveTime: 0, // For consistent smooth movement timing
     currentState: GameState.WAITING_FOR_START,
     joystickInput: { x: 0, y: 0 },
-    frameCount: 0
+    frameCount: 0,
+    combo: 0,          // Current eat streak (drives the score multiplier)
+    lastFoodTime: 0    // Timestamp of the last food eaten (for the combo window)
 };
 
 // Enhanced session management with better error handling

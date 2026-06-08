@@ -62,15 +62,20 @@ const gameConfig = {
     foodSize: 8,
     baseSpeed: 2.0,       // Minimum constant speed
     maxSpeedBoost: 1.5,   // Speed added when joystick is fully angled
-    speedIncrease: 0.1,   // Speed increment per food item
-    maxSpeed: 5,          // Maximum allowed speed limit
-    turnSpeed: 0.08,      // How fast the snake turns (radians)
+    speedIncrease: 0.06,  // Speed increment per food item (gentle ramp = a flow curve, not a sprint)
+    maxSpeed: 4,          // Maximum allowed speed limit (kept controllable alongside turn coupling)
+    turnSpeed: 0.13,      // Base turn step per 60fps frame (radians); crisper than the old 0.08
+    maxTurnSpeedFactor: 2.2, // Cap on how much faster turning scales with speed (keeps turn radius ~constant)
     segmentSpacing: 15,   // Gap between snake segments
     wallMargin: 20,       // Distance from edge considering as wall
     minSelfCollisionSegments: 8, // Minimum segments before self-collision is possible
-    
+
+    // Combo / streak scoring
+    comboWindowMs: 4500, // Eat again within this window to extend the streak
+    maxCombo: 6,         // Cap on the score multiplier
+
     // Optimization settings
-    joystickThrottleMs: 50, // Limits joystick update frequency
+    joystickThrottleMs: 33, // Limits joystick update frequency (~30Hz for snappier phone input)
     movementUpdateMs: 25,   // Frames per second interval
     
     // Connection settings
@@ -78,15 +83,17 @@ const gameConfig = {
     retryDelayMs: 2000,
 };
 
-// Palette used for painting canvas elements
+// Palette used for painting canvas elements. Aligned with the teal brand tokens in
+// css/variables.css so the board and the UI chrome read as one cohesive design, with
+// a warm gold food as the high-contrast pop (also matches the "new high score" gold).
 const colors = {
     background: "#0a0a0a",
-    snake: "#ff1493",
-    snakeHead: "#ff6b35",
-    food: "#7209b7",
+    snake: "#19c3b2",      // teal body — matches the brand teal UI
+    snakeHead: "#7df9ff",  // bright cyan head leads the body
+    food: "#ffcf4d",       // warm gold pop, high contrast against the teal snake
     border: "#333333",
     text: "#ffffff",
-    accent: "#ff1493"
+    accent: "#22d3c5"      // teal accent
 };
 
 // Enum representing possible game states

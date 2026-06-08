@@ -205,10 +205,16 @@
 }
 
 #game-canvas {
+    /* Display size stays logical (600x600); the JS sets a higher-resolution backing
+       store for HiDPI. aspect-ratio keeps it square when responsively shrunk. */
+    display: block;
+    width: 600px;
+    height: 600px;
+    aspect-ratio: 1 / 1;
     border: 3px solid;
     border-image: linear-gradient(45deg, var(--color-primary), var(--color-warning), var(--color-teal-600), var(--color-teal-700)) 1;
     background: var(--color-background);
-    box-shadow: 
+    box-shadow:
         0 0 50px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.4),
         inset 0 0 50px rgba(var(--color-teal-700-rgb, var(--color-teal-700)), 0.1);
 }
@@ -413,6 +419,7 @@
         width: 100%;
         max-width: 600px;
         flex-direction: row;
+        flex-wrap: wrap;
         justify-content: center;
     }
     
@@ -476,4 +483,50 @@
     font-weight: var(--font-weight-bold);
     margin: var(--space-16) 0 0;
     text-shadow: 0 0 8px rgba(255, 209, 102, 0.6);
+}
+
+/* Desktop controls legend — tells the host they can play keyboard-only. */
+.controls-hint {
+    margin: 0;
+    width: 100%;
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-normal);
+}
+
+.controls-hint kbd {
+    display: inline-block;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-xs);
+    color: var(--color-primary);
+    background: rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.12);
+    border: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.4);
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+    margin: 0 2px;
+}
+
+/* Combo streak badge — floats over the top-right of the board during a streak. */
+.combo-display {
+    position: absolute;
+    top: var(--space-12);
+    right: var(--space-12);
+    font-family: 'Orbitron', var(--font-family-base);
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-2xl);
+    color: #ffcf4d;
+    background: rgba(10, 10, 16, 0.55);
+    padding: var(--space-6) var(--space-12);
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(255, 207, 77, 0.5);
+    text-shadow: 0 0 10px rgba(255, 207, 77, 0.8);
+    pointer-events: none;
+    z-index: 5;
+    animation: comboPop var(--duration-fast) var(--ease-standard);
+}
+
+@keyframes comboPop {
+    0% { transform: scale(0.6); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
 }
