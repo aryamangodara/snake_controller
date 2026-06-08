@@ -15,8 +15,9 @@ function initializeDesktopGame() {
     }
     
     ctx = canvas.getContext('2d');
-    canvas.width = gameConfig.boardSize.width;
-    canvas.height = gameConfig.boardSize.height;
+    setupHiDPICanvas();
+    // Re-scale if the window moves to a screen with a different pixel ratio.
+    window.addEventListener('resize', () => { setupHiDPICanvas(); renderGame(); });
 
     generateNewSession();
     setupKeyboardControls();
@@ -28,6 +29,22 @@ function initializeDesktopGame() {
     if (muteBtn) muteBtn.addEventListener('click', toggleMute);
 
     startGameLoop();
+}
+
+/**
+ * Sizes the canvas backing store to the device pixel ratio so rendering is crisp on
+ * HiDPI / retina screens, while keeping the logical drawing coordinate system at
+ * gameConfig.boardSize (600x600). CSS controls the on-screen display size, so all
+ * game math stays in logical pixels — only the resolution of the buffer changes.
+ */
+function setupHiDPICanvas() {
+    if (!canvas || !ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const { width, height } = gameConfig.boardSize;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    // Draw in logical (CSS-pixel) coordinates; this transform scales to the buffer.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 // Maps keyboard keys to direction vectors (screen coords: +y is down).
@@ -119,12 +136,16 @@ function startGame() {
     gameState.joystickInput = { x: 0, y: 0 };
     gameState.frameCount = 0;
     gameState.lastMoveTime = performance.now();
-    
+    gameState.combo = 0;
+    gameState.lastFoodTime = 0;
+    resetEffects();
+    updateComboDisplay();
+
     const gameOverScreen = document.getElementById('game-over');
     if (gameOverScreen) {
         gameOverScreen.classList.add('hidden');
     }
-    
+
     updateGameStateInFirebase();
 }
 
@@ -150,16 +171,20 @@ function restartGame() {
         lastMoveTime: performance.now(),
         currentState: GameState.PLAYING,
         joystickInput: { x: 0, y: 0 },
-        frameCount: 0
+        frameCount: 0,
+        combo: 0,
+        lastFoodTime: 0
     };
-    
+
     updateScore();
-    
+    resetEffects();
+    updateComboDisplay();
+
     const gameOverScreen = document.getElementById('game-over');
     if (gameOverScreen) {
         gameOverScreen.classList.add('hidden');
     }
-    
+
     generateFood();
     updateGameStateInFirebase();
 }
@@ -174,16 +199,22 @@ function updateGame(currentTime) {
     const moveDeltaTime = currentTime - gameState.lastMoveTime;
     
     if (gameState.currentState === GameState.PLAYING) {
-        // Always update direction smoothly
-        updateSnakeDirection();
+        // Always update direction smoothly (frame-rate-independent; needs elapsed time)
+        updateSnakeDirection(deltaTime);
         
         // CONSTANT MOVEMENT: Snake moves every frame regardless of joystick input
         if (moveDeltaTime >= gameConfig.movementUpdateMs) {
             moveSnake();
             gameState.lastMoveTime = currentTime;
         }
-        
+
         gameState.frameCount++;
+
+        // Expire a stale combo so the badge clears if you dawdle between bites.
+        if (gameState.combo > 0 && Date.now() - gameState.lastFoodTime > gameConfig.comboWindowMs) {
+            gameState.combo = 0;
+            updateComboDisplay();
+        }
     }
     
     renderGame();
@@ -194,15 +225,32 @@ function updateGame(currentTime) {
     }
 }
 
+// Frame-rate-independent turning: turnSpeed is calibrated per 60fps frame, so we
+// scale each frame's turn by how long it actually took. Clamp protects against a
+// huge jump after the tab is backgrounded (deltaTime can spike to seconds).
+const TARGET_FRAME_MS = 1000 / 60;
+const MAX_FRAME_STEP = 3;
+
 /**
- * Eases the snake logic towards the target rotation from the joystick
+ * Eases the snake heading toward the joystick target. The per-frame turn step is
+ * made frame-rate-independent (so 60 / 120 / 144Hz feel identical) and coupled to
+ * speed (so the turn radius stays ~constant as the snake speeds up). See
+ * logic.js:speedToTurnStep.
+ * @param {number} deltaTime - ms elapsed since the previous frame.
  */
-function updateSnakeDirection() {
-    // Smoothly interpolate the heading toward the joystick target (see logic.js).
+function updateSnakeDirection(deltaTime) {
+    const frameFactor = Math.min(deltaTime / TARGET_FRAME_MS, MAX_FRAME_STEP);
+    const turnStep = speedToTurnStep(
+        gameConfig.turnSpeed,
+        gameState.currentSpeed,
+        gameConfig.baseSpeed,
+        frameFactor,
+        gameConfig.maxTurnSpeedFactor
+    );
     gameState.direction = stepDirection(
         gameState.direction,
         gameState.targetDirection,
-        gameConfig.turnSpeed
+        turnStep
     );
 }
 
@@ -239,19 +287,36 @@ function moveSnake() {
 
     // Food collision detection
     if (eatsFood(head, gameState.food, gameConfig)) {
-        console.log('🍎 Food collected! Score:', gameState.score + 10);
-        gameState.score += 10;
+        const foodX = gameState.food.x;
+        const foodY = gameState.food.y;
+        const now = Date.now();
+
+        // Combo: eating again within the window extends the streak (capped at maxCombo).
+        gameState.combo = (now - gameState.lastFoodTime < gameConfig.comboWindowMs)
+            ? gameState.combo + 1
+            : 1;
+        gameState.lastFoodTime = now;
+        const multiplier = Math.min(gameState.combo, gameConfig.maxCombo);
+        const gained = 10 * multiplier;
+        gameState.score += gained;
         updateScore();
-        playFoodSound();
+        updateComboDisplay();
+
+        // Juice: particle burst + ripple + floating score at the point of the bite.
+        spawnFoodBurst(foodX, foodY, colors.food);
+        spawnScorePop(foodX, foodY,
+            multiplier > 1 ? `+${gained} x${multiplier}` : `+${gained}`,
+            multiplier > 1 ? colors.food : '#ffffff');
+
+        playFoodSound(multiplier); // ascending pitch as the streak climbs
         sendHapticFeedback('food');
         generateFood();
         addSnakeSegment();
-        
+
         // Increase base speed gradually
         if (gameState.baseSpeed < gameConfig.maxSpeed) {
             gameState.baseSpeed = Math.min(gameConfig.maxSpeed, gameState.baseSpeed + gameConfig.speedIncrease);
             gameState.currentSpeed = gameState.baseSpeed; // Update current speed too
-            console.log('⚡ Speed increased to:', gameState.baseSpeed.toFixed(2));
         }
     }
 }
@@ -351,10 +416,17 @@ function generateFood() {
 function renderGame() {
     if (!ctx) return;
     
-    // Clear canvas
+    // Clear canvas (draw in logical coords; the HiDPI transform scales to the buffer)
+    const W = gameConfig.boardSize.width;
+    const H = gameConfig.boardSize.height;
     ctx.fillStyle = colors.background;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+    ctx.fillRect(0, 0, W, H);
+
+    // Screen-shake: everything below is drawn shifted; the offset decays to zero.
+    const shake = getShakeOffset();
+    ctx.save();
+    ctx.translate(shake.x, shake.y);
+
     // Draw boundary guidelines
     if (gameState.currentState === GameState.PLAYING) {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
@@ -425,25 +497,30 @@ function renderGame() {
     
     // Show waiting message
     if (gameState.currentState === GameState.WAITING_FOR_START) {
-        ctx.fillStyle = 'rgba(15, 15, 35, 0.9)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        const gradient = ctx.createLinearGradient(0, canvas.height / 2 - 40, 0, canvas.height / 2 + 80);
-        gradient.addColorStop(0, '#ff1493');
-        gradient.addColorStop(0.5, '#ff6b35');
-        gradient.addColorStop(1, '#f72585');
-        
+        ctx.fillStyle = 'rgba(10, 10, 16, 0.9)';
+        ctx.fillRect(0, 0, W, H);
+
+        const gradient = ctx.createLinearGradient(0, H / 2 - 40, 0, H / 2 + 80);
+        gradient.addColorStop(0, '#7df9ff');
+        gradient.addColorStop(0.5, '#19c3b2');
+        gradient.addColorStop(1, '#2de2c0');
+
         ctx.fillStyle = gradient;
         ctx.font = 'bold 24px Orbitron, monospace';
         ctx.textAlign = 'center';
-        ctx.shadowColor = '#ff1493';
+        ctx.shadowColor = '#22d3c5';
         ctx.shadowBlur = 10;
-        
-        ctx.fillText('Waiting for Mobile Controller', canvas.width / 2, canvas.height / 2 - 20);
-        ctx.fillText('Snake Moves Continuously - Be Ready!', canvas.width / 2, canvas.height / 2 + 20);
+
+        ctx.fillText('Waiting for Mobile Controller', W / 2, H / 2 - 20);
+        ctx.fillText('Snake Moves Continuously - Be Ready!', W / 2, H / 2 + 20);
         
         ctx.shadowBlur = 0;
     }
+
+    // Draw juice (particles, ripples, score pops) above the board.
+    updateAndDrawEffects(ctx);
+
+    ctx.restore(); // end screen-shake transform
 }
 
 /**
@@ -457,6 +534,22 @@ function updateScore() {
 }
 
 /**
+ * Shows/hides the combo badge over the board. Visible only while a streak (x2+) is
+ * active; reflects the capped multiplier.
+ */
+function updateComboDisplay() {
+    const el = document.getElementById('combo-display');
+    if (!el) return;
+    const multiplier = Math.min(gameState.combo, gameConfig.maxCombo);
+    if (multiplier > 1) {
+        el.textContent = `🔥 x${multiplier}`;
+        el.classList.remove('hidden');
+    } else {
+        el.classList.add('hidden');
+    }
+}
+
+/**
  * Triggers game over GUI modal
  */
 function gameOver() {
@@ -464,6 +557,15 @@ function gameOver() {
     gameState.currentState = GameState.GAME_OVER;
     playCrashSound();
     sendHapticFeedback('crash');
+
+    // Juice: screen shake + a debris burst at the head for crash impact.
+    triggerShake(9, 340);
+    const crashHead = gameState.snake[0];
+    if (crashHead) spawnFoodBurst(crashHead.x, crashHead.y, colors.snakeHead);
+
+    // The streak is over — clear the combo badge.
+    gameState.combo = 0;
+    updateComboDisplay();
 
     const finalScoreElement = document.getElementById('final-score');
     if (finalScoreElement) {
@@ -476,9 +578,11 @@ function gameOver() {
     const newHighEl = document.getElementById('new-high-score');
     if (newHighEl) newHighEl.classList.toggle('hidden', !isNewBest);
 
+    // Hitstop: let the impact register for a beat before the modal slides in. The
+    // snake is already frozen (state = GAME_OVER), so the canvas just keeps shaking.
     const gameOverScreen = document.getElementById('game-over');
     if (gameOverScreen) {
-        gameOverScreen.classList.remove('hidden');
+        setTimeout(() => gameOverScreen.classList.remove('hidden'), 150);
     }
 
     updateGameStateInFirebase();

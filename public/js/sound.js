@@ -44,8 +44,13 @@ function playTone(freq, durationMs, type = 'sine', gainValue = 0.3) {
     osc.stop(now + durationMs / 1000);
 }
 
-function playFoodSound() {
-    playTone(660, 110, 'square', 0.28);
+/**
+ * Eat blip. Pitch climbs with the combo step for a satisfying ascending streak.
+ * @param {number} [step=1] - combo multiplier (1 = no combo).
+ */
+function playFoodSound(step = 1) {
+    const freq = 660 * Math.pow(1.06, Math.max(0, step - 1));
+    playTone(freq, 110, 'square', 0.28);
 }
 
 function playCrashSound() {

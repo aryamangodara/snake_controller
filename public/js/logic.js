@@ -48,6 +48,26 @@ function stepDirection(current, target, turnSpeed) {
 }
 
 /**
+ * Effective per-frame turn step — frame-rate-independent and speed-coupled.
+ * - `frameFactor` (= elapsedMs / (1000/60), clamped by the caller) scales the step
+ *   by how long the frame actually took, so angular velocity is identical on 60 /
+ *   120 / 144Hz displays instead of changing with refresh rate.
+ * - The speed term scales the turn rate with how fast the snake is moving (relative
+ *   to `baseSpeed`), so the turn *radius* stays roughly constant as it speeds up —
+ *   the snake stays as maneuverable at full tilt as it is at rest.
+ * @param {number} baseTurn - config.turnSpeed (radians per 60fps frame).
+ * @param {number} currentSpeed - the snake's current speed.
+ * @param {number} baseSpeed - the reference (un-boosted) speed.
+ * @param {number} frameFactor - elapsedMs / (1000/60), pre-clamped by the caller.
+ * @param {number} maxSpeedFactor - upper clamp on the speed multiplier.
+ * @returns {number} the turn step to pass to stepDirection().
+ */
+function speedToTurnStep(baseTurn, currentSpeed, baseSpeed, frameFactor, maxSpeedFactor) {
+    const speedFactor = Math.min(currentSpeed / baseSpeed, maxSpeedFactor);
+    return baseTurn * speedFactor * frameFactor;
+}
+
+/**
  * True if the head has crossed the playable boundary.
  * @param {{x:number,y:number}} head
  * @param {object} config - gameConfig (uses wallMargin, boardSize).
@@ -115,6 +135,7 @@ if (typeof module !== 'undefined' && module.exports) {
         normalizeAngle,
         shortestAngleDelta,
         stepDirection,
+        speedToTurnStep,
         hitsWall,
         hitsSelf,
         eatsFood,

@@ -5,6 +5,7 @@ const {
     normalizeAngle,
     shortestAngleDelta,
     stepDirection,
+    speedToTurnStep,
     hitsWall,
     hitsSelf,
     eatsFood,
@@ -71,6 +72,32 @@ describe('stepDirection', () => {
         const d = stepDirection(0.01, -0.5, 0.08); // would go negative before normalizing
         expect(d).toBeGreaterThanOrEqual(0);
         expect(d).toBeLessThan(TAU);
+    });
+});
+
+describe('speedToTurnStep', () => {
+    const BASE_TURN = 0.13;
+    const BASE_SPEED = 2;
+    const MAX_FACTOR = 2.2;
+
+    it('returns the base turn at base speed on a 60fps frame', () => {
+        // frameFactor 1 (= a 60fps frame), currentSpeed == baseSpeed -> no scaling.
+        expect(speedToTurnStep(BASE_TURN, BASE_SPEED, BASE_SPEED, 1, MAX_FACTOR)).toBeCloseTo(BASE_TURN);
+    });
+
+    it('scales the turn rate up with speed (keeps turn radius ~constant)', () => {
+        // Twice the speed -> twice the angular step, so radius = speed/angular stays put.
+        expect(speedToTurnStep(BASE_TURN, 4, BASE_SPEED, 1, MAX_FACTOR)).toBeCloseTo(BASE_TURN * 2);
+    });
+
+    it('clamps the speed multiplier at maxSpeedFactor', () => {
+        expect(speedToTurnStep(BASE_TURN, 100, BASE_SPEED, 1, MAX_FACTOR)).toBeCloseTo(BASE_TURN * MAX_FACTOR);
+    });
+
+    it('is frame-rate independent: a longer frame turns proportionally further', () => {
+        // A frame twice as long (frameFactor 2) turns twice as far -> constant rad/sec.
+        expect(speedToTurnStep(BASE_TURN, BASE_SPEED, BASE_SPEED, 2, MAX_FACTOR)).toBeCloseTo(BASE_TURN * 2);
+        expect(speedToTurnStep(BASE_TURN, BASE_SPEED, BASE_SPEED, 0.5, MAX_FACTOR)).toBeCloseTo(BASE_TURN / 2);
     });
 });
 
