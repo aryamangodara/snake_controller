@@ -13,11 +13,9 @@ function shareUrl() {
     return `${location.origin}${location.pathname}`;
 }
 
-/** Caption for the score, with a "(new best!)" flourish when it ties/beats the best. */
+/** Caption for the score. (No high-score flair: the phone's localStorage differs from the host's.) */
 function buildShareText(score) {
-    const best = (typeof getHighScore === 'function') ? getHighScore() : 0;
-    const flair = (score > 0 && score >= best) ? ' (new best!)' : '';
-    return `I scored ${score} on Snake 🐍🔥${flair} — can you beat me?`;
+    return `I scored ${score} on Snake 🐍🔥 — can you beat me?`;
 }
 
 /** Small transient toast for share feedback (e.g. the Instagram copy fallback). */
@@ -88,9 +86,16 @@ function wireGameOverCard() {
         btn.addEventListener('click', () => openShare(btn.getAttribute('data-share')));
     });
     const playAgain = document.getElementById('play-again-btn');
-    if (playAgain && typeof restartGame === 'function') {
-        playAgain.addEventListener('click', () => restartGame());
-    }
+    if (!playAgain) return;
+    playAgain.addEventListener('click', () => {
+        // On the phone, ask the desktop host to restart; on the desktop, restart directly.
+        const onPhone = (typeof sessionManager !== 'undefined' && sessionManager && sessionManager.isDesktop === false);
+        if (onPhone && typeof sendGameAction === 'function') {
+            sendGameAction('restart');
+        } else if (typeof restartGame === 'function') {
+            restartGame();
+        }
+    });
 }
 
 // Expose for Node/Vitest only (no-op in the browser classic-script context).

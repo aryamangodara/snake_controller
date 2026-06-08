@@ -29,7 +29,7 @@
     <script src="https://unpkg.com/qrious@4.0.2/dist/qrious.min.js"></script>
     
     <!-- Font Awesome for social icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
     
     <!-- Override CSS Media Queries -->
     <style>
@@ -121,19 +121,7 @@
                                 <span id="final-score" class="score-value">0</span>
                             </div>
                             <p id="new-high-score" class="new-high-score hidden">🏆 New High Score!</p>
-
-                            <div class="share-section">
-                                <p class="share-prompt">Flex your score</p>
-                                <div class="share-buttons">
-                                    <button class="social-link share-btn share-whatsapp" type="button" data-share="whatsapp" aria-label="Share on WhatsApp"><i class="fab fa-whatsapp"></i></button>
-                                    <button class="social-link share-btn share-x" type="button" data-share="x" aria-label="Share on X"><i class="fab fa-x-twitter"></i></button>
-                                    <button class="social-link share-btn share-facebook" type="button" data-share="facebook" aria-label="Share on Facebook"><i class="fab fa-facebook-f"></i></button>
-                                    <button class="social-link share-btn share-instagram" type="button" data-share="instagram" aria-label="Share on Instagram"><i class="fab fa-instagram"></i></button>
-                                </div>
-                            </div>
-
-                            <button id="play-again-btn" class="btn-play-again" type="button">Play Again</button>
-                            <p class="restart-prompt">or press Space · use your phone</p>
+                            <p class="restart-prompt">Press Space to play again · or use your phone</p>
                         </div>
                     </div>
                 </div>
@@ -208,6 +196,25 @@
                         <span class="center-icon">▶</span>
                     </button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Game-over share card (shown on the phone when the game ends) -->
+        <div id="mobile-game-over" class="mobile-game-over hidden">
+            <div class="mobile-game-over-content">
+                <h2 class="mobile-go-title">Game Over!</h2>
+                <div class="mobile-score">
+                    <span class="mobile-score-label">Score</span>
+                    <span id="mobile-final-score" class="mobile-score-value">0</span>
+                </div>
+                <p class="share-prompt">Flex your score</p>
+                <div class="share-buttons">
+                    <button class="share-btn" type="button" data-share="whatsapp" aria-label="Share on WhatsApp"><i class="fab fa-whatsapp"></i></button>
+                    <button class="share-btn" type="button" data-share="x" aria-label="Share on X"><i class="fab fa-x-twitter"></i></button>
+                    <button class="share-btn" type="button" data-share="facebook" aria-label="Share on Facebook"><i class="fab fa-facebook-f"></i></button>
+                    <button class="share-btn" type="button" data-share="instagram" aria-label="Share on Instagram"><i class="fab fa-instagram"></i></button>
+                </div>
+                <button id="play-again-btn" class="btn-play-again" type="button">Play Again</button>
             </div>
         </div>
     </div>

@@ -67,7 +67,7 @@
 
 .game-title {
     font-family: 'Orbitron', var(--font-family-base);
-    font-size: var(--font-size-4xl);
+    font-size: var(--font-size-3xl);
     font-weight: var(--font-weight-bold);
     background: linear-gradient(45deg, var(--color-primary), var(--color-warning), var(--color-teal-600), var(--color-teal-700));
     background-size: 400% 400%;
@@ -87,7 +87,7 @@
 
 .creator-text {
     color: var(--color-warning);
-    font-size: var(--font-size-lg);
+    font-size: var(--font-size-base);
     font-weight: var(--font-weight-medium);
     margin-top: var(--space-4);
     text-shadow: 0 0 5px rgba(var(--color-warning-rgb, var(--color-orange-500-rgb)), 0.5);
@@ -96,12 +96,12 @@
 .title-with-logo {
     display: flex;
     align-items: center;
-    gap: var(--space-20);
+    gap: var(--space-16);
 }
 
 .game-logo {
-    width: 80px;
-    height: 80px;
+    width: 56px;
+    height: 56px;
     border-radius: var(--radius-full);
     box-shadow: 
         0 0 30px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.5),
@@ -513,83 +513,9 @@
     100% { transform: scale(1); opacity: 1; }
 }
 
-/* ── Game-over share card ───────────────────────────────────────────── */
-.share-section {
-    margin-top: var(--space-24);
-}
-
-.share-prompt {
-    margin: 0 0 var(--space-12);
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-}
-
-.share-buttons {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: var(--space-12);
-}
-
-/* Reuses the .social-link base (circular 45px gradient + hover shimmer), in teal. */
-.share-btn {
-    background: linear-gradient(45deg, var(--color-teal-700), var(--color-primary));
-    color: var(--color-surface);
-    box-shadow: var(--shadow-md);
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-}
-
-.share-btn:hover {
-    background: linear-gradient(45deg, var(--color-primary), var(--color-teal-700));
-    transform: translateY(-3px) scale(1.05);
-    box-shadow: var(--shadow-lg);
-}
-
-.btn-play-again {
-    margin-top: var(--space-24);
-    padding: var(--space-12) var(--space-32);
-    font-family: 'Orbitron', var(--font-family-base);
-    font-size: var(--font-size-lg);
-    font-weight: var(--font-weight-bold);
-    color: var(--color-btn-primary-text);
-    background: linear-gradient(45deg, var(--color-primary), var(--color-teal-600));
-    border: none;
-    border-radius: var(--radius-full);
-    cursor: pointer;
-    box-shadow: 0 0 20px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.5);
-    transition: all var(--duration-normal) var(--ease-standard);
-}
-
-.btn-play-again:hover {
-    transform: translateY(-2px) scale(1.04);
-    box-shadow: 0 0 30px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.7);
-}
-
-/* Share feedback toast (e.g. the Instagram copy fallback). */
-.toast {
-    position: fixed;
-    bottom: var(--space-24);
-    left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    background: var(--color-surface);
-    color: var(--color-text);
-    border: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.5);
-    padding: var(--space-12) var(--space-20);
-    border-radius: var(--radius-full);
-    box-shadow: var(--shadow-lg);
-    font-size: var(--font-size-sm);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--duration-normal) var(--ease-standard),
-                transform var(--duration-normal) var(--ease-standard);
-    z-index: 10000;
-}
-
-.toast--visible {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
+/* Shrink the header on smaller laptops so it stays proportionate. */
+@media (max-width: 1024px) {
+    .game-logo { width: 48px; height: 48px; }
+    .game-title { font-size: var(--font-size-2xl); }
+    .creator-text { font-size: var(--font-size-sm); }
 }
