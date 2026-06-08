@@ -36,7 +36,9 @@
 .desktop-view {
     display: none;
     height: 100vh;
-    overflow: hidden;
+    /* Scroll safety-net: never permanently clip the connection card / QR off-screen. */
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .desktop-container {
@@ -274,10 +276,10 @@
 }
 
 .restart-prompt {
-    color: var(--color-teal-600);
-    font-size: var(--font-size-lg);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
-    margin-top: var(--space-10);
+    margin-top: var(--space-12);
 }
 
 /* Control Panel */
@@ -324,14 +326,14 @@
     background: linear-gradient(135deg, rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.08), rgba(var(--color-teal-700-rgb, var(--color-teal-700)), 0.08));
     backdrop-filter: blur(15px);
     border-radius: var(--radius-lg);
-    padding: var(--space-32);
+    padding: var(--space-20);
     border: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.3);
     text-align: center;
     box-shadow: var(--shadow-md);
 }
 
 .session-code {
-    margin: var(--space-24) 0;
+    margin: var(--space-12) 0;
 }
 
 .code-label {
@@ -355,7 +357,7 @@
 }
 
 .qr-container {
-    margin: var(--space-32) 0;
+    margin: var(--space-16) 0;
     display: flex;
     justify-content: center;
 }
@@ -429,7 +431,9 @@
     }
     
     #game-canvas {
+        width: auto;
         max-width: 100%;
+        max-height: 60vh;
         height: auto;
     }
 }
@@ -485,28 +489,6 @@
     text-shadow: 0 0 8px rgba(255, 209, 102, 0.6);
 }
 
-/* Desktop controls legend — tells the host they can play keyboard-only. */
-.controls-hint {
-    margin: 0;
-    width: 100%;
-    text-align: center;
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
-    line-height: var(--line-height-normal);
-}
-
-.controls-hint kbd {
-    display: inline-block;
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-xs);
-    color: var(--color-primary);
-    background: rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.12);
-    border: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.4);
-    border-radius: var(--radius-sm);
-    padding: 1px 6px;
-    margin: 0 2px;
-}
-
 /* Combo streak badge — floats over the top-right of the board during a streak. */
 .combo-display {
     position: absolute;
@@ -529,4 +511,85 @@
 @keyframes comboPop {
     0% { transform: scale(0.6); opacity: 0; }
     100% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Game-over share card ───────────────────────────────────────────── */
+.share-section {
+    margin-top: var(--space-24);
+}
+
+.share-prompt {
+    margin: 0 0 var(--space-12);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+
+.share-buttons {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: var(--space-12);
+}
+
+/* Reuses the .social-link base (circular 45px gradient + hover shimmer), in teal. */
+.share-btn {
+    background: linear-gradient(45deg, var(--color-teal-700), var(--color-primary));
+    color: var(--color-surface);
+    box-shadow: var(--shadow-md);
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.share-btn:hover {
+    background: linear-gradient(45deg, var(--color-primary), var(--color-teal-700));
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: var(--shadow-lg);
+}
+
+.btn-play-again {
+    margin-top: var(--space-24);
+    padding: var(--space-12) var(--space-32);
+    font-family: 'Orbitron', var(--font-family-base);
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-btn-primary-text);
+    background: linear-gradient(45deg, var(--color-primary), var(--color-teal-600));
+    border: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    box-shadow: 0 0 20px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.5);
+    transition: all var(--duration-normal) var(--ease-standard);
+}
+
+.btn-play-again:hover {
+    transform: translateY(-2px) scale(1.04);
+    box-shadow: 0 0 30px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.7);
+}
+
+/* Share feedback toast (e.g. the Instagram copy fallback). */
+.toast {
+    position: fixed;
+    bottom: var(--space-24);
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.5);
+    padding: var(--space-12) var(--space-20);
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-lg);
+    font-size: var(--font-size-sm);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-normal) var(--ease-standard),
+                transform var(--duration-normal) var(--ease-standard);
+    z-index: 10000;
+}
+
+.toast--visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
 }

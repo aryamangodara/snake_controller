@@ -121,7 +121,19 @@
                                 <span id="final-score" class="score-value">0</span>
                             </div>
                             <p id="new-high-score" class="new-high-score hidden">🏆 New High Score!</p>
-                            <p class="restart-prompt">Press Space or use your phone to play again</p>
+
+                            <div class="share-section">
+                                <p class="share-prompt">Flex your score</p>
+                                <div class="share-buttons">
+                                    <button class="social-link share-btn share-whatsapp" type="button" data-share="whatsapp" aria-label="Share on WhatsApp"><i class="fab fa-whatsapp"></i></button>
+                                    <button class="social-link share-btn share-x" type="button" data-share="x" aria-label="Share on X"><i class="fab fa-x-twitter"></i></button>
+                                    <button class="social-link share-btn share-facebook" type="button" data-share="facebook" aria-label="Share on Facebook"><i class="fab fa-facebook-f"></i></button>
+                                    <button class="social-link share-btn share-instagram" type="button" data-share="instagram" aria-label="Share on Instagram"><i class="fab fa-instagram"></i></button>
+                                </div>
+                            </div>
+
+                            <button id="play-again-btn" class="btn-play-again" type="button">Play Again</button>
+                            <p class="restart-prompt">or press Space · use your phone</p>
                         </div>
                     </div>
                 </div>
@@ -137,10 +149,6 @@
                             <span id="high-score" class="score-value">0</span>
                         </div>
                     </div>
-
-                    <p class="controls-hint">
-                        <kbd>Space</kbd> start · <kbd>↑ ↓ ← →</kbd> / <kbd>WASD</kbd> steer · or 📱 scan to play from your phone
-                    </p>
 
                     <div class="connection-card">
                         <div class="session-code">
@@ -214,6 +222,7 @@
     <script src="js/effects.js"></script>
     <script src="js/network.js"></script>
     <script src="js/game.js"></script>
+    <script src="js/share.js"></script>
     <script src="js/controller.js"></script>
     <script src="js/main.js"></script>
     
