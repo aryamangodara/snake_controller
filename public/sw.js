@@ -1,11 +1,11 @@
 // ==========================================
 // SERVICE WORKER — offline shell cache
 // ==========================================
-// Caches the static, same-origin app shell so the game loads offline. All
-// cross-origin traffic (Firebase, gstatic, unpkg, Font Awesome) is intentionally
-// left untouched so realtime sync keeps working. Bump CACHE when shell assets change.
+// Network-first for same-origin requests so the app always runs fresh code when online; the
+// cache is an OFFLINE FALLBACK only. All cross-origin traffic (Firebase, gstatic, unpkg, Font
+// Awesome) is left untouched so realtime sync keeps working. Bump CACHE when shell assets change.
 
-const CACHE = 'snake-shell-v4';
+const CACHE = 'snake-shell-v5';
 
 const SHELL_ASSETS = [
     './',
@@ -53,26 +53,19 @@ self.addEventListener('fetch', (event) => {
     // Only handle same-origin GETs; let Firebase/CDN requests go straight to network.
     if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-    // Network-first for the HTML document so new deploys show up immediately.
-    if (event.request.mode === 'navigate') {
-        event.respondWith(
-            fetch(event.request).catch(() => caches.match('./index.html'))
-        );
-        return;
-    }
-
-    // Stale-while-revalidate for static assets: fast from cache, refreshed in the background.
+    // Network-first for ALL same-origin requests (HTML, JS, CSS, images): always run fresh code
+    // when online; fall back to cache only when offline. The previous strategy served the HTML
+    // network-first but assets stale-while-revalidate, so after a deploy fresh markup loaded
+    // against a STALE cached controller.js — the new UI appeared but its handlers were never
+    // wired (e.g. mobile "Play Again" did nothing) until a second reload. `cache: 'no-cache'`
+    // forces revalidation so a stale HTTP-cached copy is never used.
     event.respondWith(
-        caches.open(CACHE).then((cache) =>
-            cache.match(event.request).then((cached) => {
-                const network = fetch(event.request)
-                    .then((response) => {
-                        cache.put(event.request, response.clone());
-                        return response;
-                    })
-                    .catch(() => cached);
-                return cached || network;
+        fetch(event.request, { cache: 'no-cache' })
+            .then((response) => {
+                const copy = response.clone();
+                caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+                return response;
             })
-        )
+            .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
     );
 });
