@@ -5,7 +5,7 @@
 // cross-origin traffic (Firebase, gstatic, unpkg, Font Awesome) is intentionally
 // left untouched so realtime sync keeps working. Bump CACHE when shell assets change.
 
-const CACHE = 'snake-shell-v3';
+const CACHE = 'snake-shell-v4';
 
 const SHELL_ASSETS = [
     './',

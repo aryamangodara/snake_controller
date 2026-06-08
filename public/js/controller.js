@@ -62,6 +62,9 @@ function setupMobileEventListeners() {
             centerBtn.classList.remove('active');
         });
     }
+
+    // Wire the game-over share card buttons (share.js): share intents + Play Again.
+    if (typeof wireGameOverCard === 'function') wireGameOverCard();
 }
 
 /**
@@ -277,6 +280,7 @@ async function connectViaRobustHybrid(sessionCode) {
                     const data = doc.data();
                     if (data.gameState) {
                         updateCenterButtonIcon(data.gameState.state);
+                        updateMobileGameOver(data.gameState);
                     }
                     if (data.feedback) {
                         handleHapticFeedback(data.feedback);
@@ -304,6 +308,7 @@ async function connectViaRobustHybrid(sessionCode) {
             
             if (sessionData.gameState) {
                 updateCenterButtonIcon(sessionData.gameState.state);
+                updateMobileGameOver(sessionData.gameState);
             }
             
         } else {
@@ -341,12 +346,14 @@ function connectViaLocalStorage(sessionCode) {
         const gameStateStr = localStorage.getItem(`session_${sessionCode}_state`);
         const gameStateData = safeParse(gameStateStr, { state: GameState.WAITING_FOR_START });
         updateCenterButtonIcon(gameStateData.state);
+        updateMobileGameOver(gameStateData);
 
         window.addEventListener('storage', function(e) {
             if (e.key === `session_${sessionCode}_state`) {
                 const data = safeParse(e.newValue, {});
                 if (data.state) {
                     updateCenterButtonIcon(data.state);
+                    updateMobileGameOver(data);
                 }
             }
         });
@@ -412,6 +419,27 @@ function updateCenterButtonIcon(currentState) {
         centerBtn.disabled = true;
         centerBtn.classList.add('playing');
         if (btnIcon) btnIcon.textContent = '🐍';
+    }
+}
+
+/**
+ * Shows/hides the phone's game-over share card and reflects the synced final score.
+ * Mirrors the desktop's score into the local gameState so share.js can read it.
+ * @param {{state:string, score:(number|undefined)}} gs - the desktop's synced game state.
+ */
+function updateMobileGameOver(gs) {
+    if (!gs) return;
+    if (typeof gs.score === 'number') gameState.score = gs.score;
+
+    const card = document.getElementById('mobile-game-over');
+    if (!card) return;
+
+    if (gs.state === GameState.GAME_OVER) {
+        const scoreEl = document.getElementById('mobile-final-score');
+        if (scoreEl) scoreEl.textContent = (typeof gs.score === 'number' ? gs.score : gameState.score).toString();
+        card.classList.remove('hidden');
+    } else {
+        card.classList.add('hidden');
     }
 }
 

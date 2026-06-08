@@ -28,9 +28,6 @@ function initializeDesktopGame() {
     const muteBtn = document.getElementById('mute-btn');
     if (muteBtn) muteBtn.addEventListener('click', toggleMute);
 
-    // Game-over share card + Play Again button (share.js).
-    if (typeof wireGameOverCard === 'function') wireGameOverCard();
-
     startGameLoop();
 }
 
