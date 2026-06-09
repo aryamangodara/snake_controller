@@ -572,7 +572,6 @@ function gameOver() {
     console.log('💀 Game over! Final score:', gameState.score, 'Snake length:', gameState.snake.length);
     gameState.currentState = GameState.GAME_OVER;
     playCrashSound();
-    sendHapticFeedback('crash');
 
     // Juice: screen shake + a debris burst at the head for crash impact.
     triggerShake(9, 340);

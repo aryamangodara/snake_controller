@@ -333,6 +333,22 @@
     box-shadow: var(--shadow-lg);
 }
 
+/* Loss cue: a quick shake + red danger flash on the game-over card (iOS-safe; the
+   on-screen counterpart to the haptic buzz). Re-armed via reflow in playLossFlash(). */
+@keyframes lossShake {
+    0%   { transform: translateX(0);     border-color: rgba(var(--color-red-400-rgb), 0.4); }
+    15%  { transform: translateX(-10px); box-shadow: 0 0 28px 4px rgba(var(--color-red-400-rgb), 0.55); }
+    30%  { transform: translateX(9px); }
+    45%  { transform: translateX(-7px);  border-color: rgba(var(--color-red-400-rgb), 0.85); }
+    60%  { transform: translateX(5px); }
+    75%  { transform: translateX(-3px); }
+    100% { transform: translateX(0);     border-color: rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.4); }
+}
+
+.mobile-game-over-content.loss-flash {
+    animation: lossShake 480ms var(--ease-standard) both;
+}
+
 .mobile-go-title {
     font-family: 'Orbitron', var(--font-family-base);
     color: var(--color-primary);
