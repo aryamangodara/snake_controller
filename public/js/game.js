@@ -542,11 +542,25 @@ function updateComboDisplay() {
     if (!el) return;
     const multiplier = Math.min(gameState.combo, gameConfig.maxCombo);
     if (multiplier > 1) {
-        el.textContent = `🔥 x${multiplier}`;
+        const label = el.querySelector('.combo-label');
+        if (label) label.textContent = `🔥 x${multiplier}`;
         el.classList.remove('hidden');
+        restartComboTimer(); // (re)fill the yellow timer; it drains over comboWindowMs
     } else {
         el.classList.add('hidden');
     }
+}
+
+/**
+ * Restart the streak badge's draining yellow fill from full. Called on each streak-eat; the
+ * fill empties over gameConfig.comboWindowMs, matching the combo-expiry window (issue #9).
+ */
+function restartComboTimer() {
+    const fill = document.querySelector('#combo-display .combo-fill');
+    if (!fill) return;
+    fill.style.animation = 'none';
+    void fill.offsetWidth; // force reflow so the animation restarts from full
+    fill.style.animation = `comboDeplete ${gameConfig.comboWindowMs}ms linear forwards`;
 }
 
 /**
