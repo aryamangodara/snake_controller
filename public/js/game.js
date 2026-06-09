@@ -62,6 +62,9 @@ const activeDirectionKeys = new Set();
  */
 function setupKeyboardControls() {
     document.addEventListener('keydown', (e) => {
+        // Don't hijack Space/Enter while typing a leaderboard handle in the game-over field.
+        const active = document.activeElement;
+        if (active && (active.id === 'player-name' || active.tagName === 'INPUT')) return;
         const key = e.key.toLowerCase();
 
         if (key === ' ' || key === 'enter') {
@@ -593,6 +596,13 @@ function gameOver() {
     const newHighEl = document.getElementById('new-high-score');
     if (newHighEl) newHighEl.classList.toggle('hidden', !isNewBest);
 
+    // Global leaderboard: submit if we already have a handle, else prompt for one.
+    if (typeof getPlayerName === 'function' && getPlayerName()) {
+        submitAndShowRank(gameState.score);
+    } else if (typeof showNameEntry === 'function') {
+        showNameEntry(gameState.score);
+    }
+
     // Analytics: the run's score + whether it set a new personal best. post_score is a
     // GA4-recommended event that surfaces in the Games engagement reports.
     trackEvent('game_over', { score: gameState.score, is_high_score: isNewBest });
@@ -606,6 +616,49 @@ function gameOver() {
     }
 
     updateGameStateInFirebase();
+}
+
+/**
+ * Submit the run's score to the global leaderboard, then show the rank callout.
+ * Non-blocking; degrades to "Leaderboard unavailable" and never throws into gameplay.
+ * @param {number} score
+ */
+function submitAndShowRank(score) {
+    const callout = document.getElementById('global-rank');
+    if (callout) { callout.classList.remove('hidden'); callout.textContent = 'Submitting to leaderboard…'; }
+    Promise.resolve(submitGlobalScore(score)).then((rank) => {
+        if (!callout) return;
+        if (rank) {
+            callout.textContent = `You ranked #${rank} globally 🏆`;
+            trackEvent('leaderboard_submit', { score: score, rank: rank });
+        } else {
+            callout.textContent = 'Leaderboard unavailable';
+        }
+    }).catch(() => { if (callout) callout.textContent = 'Leaderboard unavailable'; });
+}
+
+/**
+ * Reveal the name-entry field on game-over when no handle is saved yet; submit on confirm.
+ * @param {number} score
+ */
+function showNameEntry(score) {
+    const entry = document.getElementById('name-entry');
+    const input = document.getElementById('player-name');
+    const callout = document.getElementById('global-rank');
+    if (callout) callout.classList.add('hidden');
+    if (!entry || !input) return;
+    entry.classList.remove('hidden');
+    input.value = '';
+    setTimeout(() => input.focus(), 50);
+    const confirmName = () => {
+        const saved = setPlayerName(input.value);
+        if (!saved) { input.classList.add('lb-invalid'); return; }
+        entry.classList.add('hidden');
+        submitAndShowRank(score);
+    };
+    const joinBtn = document.getElementById('join-leaderboard-btn');
+    if (joinBtn) joinBtn.onclick = confirmName;
+    input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmName(); } };
 }
 
 /**

@@ -18,6 +18,27 @@ service cloud.firestore {
       allow create, update: if code.matches('^[0-9]{6}$') && validShape();
     }
 
+    // Public global leaderboard — one row per device id (the doc id). Reads are open so
+    // anyone can view the board; writes are shape + range validated and monotonic (a score
+    // can only go up). Best-effort only: with no auth, a determined client can still submit
+    // a fake in-range score. Real anti-cheat needs server validation / Firebase App Check.
+    match /leaderboard/{playerId} {
+      function validLeaderboard(data) {
+        return data.keys().hasOnly(['name', 'score', 'updatedAt'])
+          && data.name is string
+          && data.name.size() >= 1 && data.name.size() <= 16
+          && data.score is number
+          && data.score >= 0 && data.score <= 100000
+          && data.updatedAt == request.time;
+      }
+
+      allow read: if true;
+      allow create: if validLeaderboard(request.resource.data);
+      allow update: if validLeaderboard(request.resource.data)
+                    && request.resource.data.score >= resource.data.score;
+      allow delete: if false;
+    }
+
     // Everything else is denied by default (no other match blocks grant access).
   }
 }

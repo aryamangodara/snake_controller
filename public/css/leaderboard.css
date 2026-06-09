@@ -1,0 +1,140 @@
+/* ==========================================
+   GLOBAL LEADERBOARD — modal + game-over rank
+   ========================================== */
+
+.leaderboard-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-20);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(10px);
+}
+
+.leaderboard-panel {
+    position: relative;
+    width: min(440px, 92vw);
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: var(--space-32);
+    background: linear-gradient(135deg,
+        rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.15),
+        rgba(var(--color-teal-700-rgb, var(--color-teal-700)), 0.15));
+    border: 2px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.5);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+    color: var(--color-text);
+}
+
+.leaderboard-panel h2 {
+    font-family: 'Orbitron', var(--font-family-base);
+    color: var(--color-primary);
+    margin-bottom: var(--space-20);
+}
+
+.lb-close {
+    position: absolute;
+    top: var(--space-12);
+    right: var(--space-16);
+    background: none;
+    border: none;
+    color: var(--color-text);
+    font-size: var(--font-size-3xl);
+    line-height: 1;
+    cursor: pointer;
+}
+
+.lb-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+}
+
+.lb-row {
+    display: grid;
+    grid-template-columns: 3rem 1fr auto;
+    gap: var(--space-12);
+    align-items: center;
+    padding: var(--space-12) var(--space-16);
+    border-bottom: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.2);
+}
+
+.lb-row .lb-rank {
+    color: var(--color-warning);
+    font-weight: var(--font-weight-bold);
+}
+
+.lb-row .lb-name {
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lb-row .lb-score {
+    color: var(--color-primary);
+    font-weight: var(--font-weight-bold);
+    font-family: 'Orbitron', var(--font-family-base);
+}
+
+.lb-me {
+    background: rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.22);
+    border-radius: var(--radius-base);
+}
+
+.lb-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-8);
+}
+
+.lb-state {
+    color: var(--color-text-secondary);
+    padding: var(--space-20) 0;
+}
+
+/* Game-over additions */
+.global-rank {
+    color: var(--color-primary);
+    font-weight: var(--font-weight-bold);
+    margin: var(--space-12) 0 0;
+    text-shadow: 0 0 8px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.6);
+}
+
+.name-entry {
+    margin-top: var(--space-16);
+}
+
+.name-entry .input-group {
+    margin-bottom: var(--space-12);
+}
+
+/* The shared .input-group input spaces digits wide for the 6-digit code; tighten it for names. */
+#player-name {
+    letter-spacing: 0.05em;
+}
+
+.lb-invalid {
+    border-color: var(--color-error) !important;
+}
+
+/* Trophy button — matches the .social-link sizing from desktop.css */
+.social-link.leaderboard-link {
+    background: linear-gradient(45deg, var(--color-warning), var(--color-teal-600));
+    color: var(--color-surface);
+    border: none;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+}
+
+.social-link.leaderboard-link:hover {
+    background: linear-gradient(45deg, var(--color-teal-600), var(--color-warning));
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: var(--shadow-lg);
+}
