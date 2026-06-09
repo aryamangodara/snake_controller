@@ -40,3 +40,18 @@ function trackEvent(name, params = {}) {
         /* analytics must never throw into gameplay */
     }
 }
+
+/**
+ * Normalize a leaderboard handle: collapse any whitespace (tabs/newlines → single space),
+ * trim, and clamp to 16 chars. Returns null if nothing valid remains. UX-only — the
+ * firestore.rules re-validate length on the server, and the board renders names with
+ * textContent (so no markup can be injected).
+ * @param {string} raw
+ * @returns {string|null}
+ */
+function sanitizeName(raw) {
+    if (typeof raw !== 'string') return null;
+    const clean = raw.replace(/\s+/g, ' ').trim();
+    if (clean.length < 1) return null;
+    return clean.slice(0, 16);
+}
