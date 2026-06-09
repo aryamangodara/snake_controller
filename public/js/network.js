@@ -24,6 +24,8 @@ async function generateNewSession() {
     } else {
         setupLocalStorageSession(sessionCode);
     }
+
+    trackEvent('session_created', { connection: firebaseReady ? 'hybrid' : 'localStorage' });
 }
 
 /**
@@ -117,6 +119,11 @@ async function setupRobustHybridSession(sessionCode) {
             if (controllerData && controllerData.connected) {
                 handleJoystickInputFromMobile(controllerData.joystick || { x: 0, y: 0 });
                 updateConnectionStatus('Mobile controller connected ✅');
+                // Fire once per session — this listener re-runs on every joystick update.
+                if (!sessionManager.controllerTracked) {
+                    sessionManager.controllerTracked = true;
+                    trackEvent('controller_connected', { side: 'desktop' });
+                }
             }
         });
         

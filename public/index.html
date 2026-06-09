@@ -24,6 +24,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"></script>
     
     <!-- QR Code generation -->
     <script src="https://unpkg.com/qrious@4.0.2/dist/qrious.min.js"></script>
@@ -287,6 +288,14 @@
                     .catch(function(err) { console.warn('Service worker registration failed:', err); });
             });
         }
+
+        // PWA install funnel → GA4 (trackEvent is a no-op when analytics is unavailable).
+        window.addEventListener('beforeinstallprompt', function() {
+            if (typeof trackEvent === 'function') trackEvent('pwa_install', { outcome: 'prompted' });
+        });
+        window.addEventListener('appinstalled', function() {
+            if (typeof trackEvent === 'function') trackEvent('pwa_install', { outcome: 'installed' });
+        });
     </script>
 </body>
 </html>

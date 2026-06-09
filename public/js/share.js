@@ -58,6 +58,7 @@ function shareToInstagram(text, url) {
 /** Route a share button to its network's web intent. */
 function openShare(network) {
     const score = (typeof gameState !== 'undefined' && gameState) ? gameState.score : 0;
+    trackEvent('share', { method: network, content_type: 'score' });
     const text = buildShareText(score);
     const url = shareUrl();
     const t = encodeURIComponent(text);

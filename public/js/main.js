@@ -8,6 +8,15 @@
 function detectDevice() {
     const isMobile = window.innerWidth <= 768;
     sessionManager.isDesktop = !isMobile;
+
+    // Tag the GA4 session with the device role so the two audiences are segmentable.
+    try {
+        if (typeof analytics !== 'undefined' && analytics) {
+            analytics.setUserProperties({
+                device_role: sessionManager.isDesktop ? 'desktop_host' : 'phone_controller'
+            });
+        }
+    } catch (e) { /* ignore */ }
     
     console.log('Device detected:', sessionManager.isDesktop ? 'Desktop' : 'Mobile');
     

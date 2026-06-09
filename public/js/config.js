@@ -16,7 +16,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase with HYBRID approach: Realtime Database + Firestore
-let app, database, firestore;
+let app, database, firestore, analytics;
 let firebaseReady = false;
 
 /**
@@ -37,6 +37,13 @@ function initializeFirebase() {
         // Firestore only for session management (Less frequent updates)
         firestore = firebase.firestore();
         firebaseReady = true;
+        // Analytics (GA4). Its own try/catch so an analytics failure (adblock, unsupported
+        // env) never falls into the outer catch and drops gameplay into offline mode.
+        try {
+            analytics = firebase.analytics();
+        } catch (e) {
+            console.warn('Analytics unavailable:', e);
+        }
         console.log('🚀 Firebase initialized: Realtime DB + Firestore hybrid');
     } catch (error) {
         console.warn('Firebase initialization failed:', error);

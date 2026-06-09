@@ -11,6 +11,9 @@ function initializeMobileController() {
     // Check if session code is passed in URL query param
     const urlParams = new URLSearchParams(window.location.search);
     const sessionFromUrl = urlParams.get('session');
+
+    // Attribute how the controller arrived: scanning the QR carries ?session=, manual entry doesn't.
+    trackEvent('controller_arrival', { method: sessionFromUrl ? 'qr' : 'manual_code' });
     
     if (sessionFromUrl) {
         const sessionInput = document.getElementById('session-input');
@@ -273,6 +276,7 @@ async function connectViaRobustHybrid(sessionCode) {
             showControllerInterface();
             showConnectionSuccess();
             console.log('✅ Successfully connected to hybrid session:', sessionCode);
+            trackEvent('controller_connected', { side: 'phone' });
             
             // Listen to Firestore for session server updates
             sessionManager.firestoreUnsubscribe = sessionDoc.onSnapshot((doc) => {
