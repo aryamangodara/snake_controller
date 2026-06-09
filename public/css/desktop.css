@@ -332,28 +332,89 @@
     box-shadow: var(--shadow-md);
 }
 
-.session-code {
-    margin: var(--space-12) 0;
+/* Issue #10: QR-first "use your phone as a controller" onboarding card. */
+.qr-headline {
+    font-family: 'Orbitron', var(--font-family-base);
+    color: var(--color-primary);
+    font-size: var(--font-size-2xl);
+    font-weight: var(--font-weight-bold);
+    margin: 0 0 var(--space-4);
+    text-shadow: 0 0 12px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.6);
 }
 
-.code-label {
-    display: block;
+.qr-subhead {
     color: var(--color-warning);
-    font-size: var(--font-size-lg);
-    margin-bottom: var(--space-16);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    margin: 0 0 var(--space-8);
 }
 
+/* Bouncing arrow above the QR — "point your camera here". */
+.camera-cue {
+    color: var(--color-primary);
+    font-size: var(--font-size-2xl);
+    line-height: 1;
+    margin: 0 0 var(--space-8);
+    text-shadow: 0 0 10px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.7);
+    animation: cueBounce 1.4s ease-in-out infinite;
+}
+
+/* Three ultra-short, jargon-free steps. */
+.qr-steps {
+    list-style: none;
+    margin: var(--space-16) 0 0;
+    padding: 0;
+    text-align: left;
+    display: inline-block;
+}
+
+.qr-steps li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    color: var(--color-text);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-tight);
+    margin: var(--space-6) 0;
+}
+
+.qr-steps .step-num {
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    background: var(--color-primary);
+    color: var(--color-btn-primary-text);
+    font-family: 'Orbitron', var(--font-family-base);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
+}
+
+/* Secondary fallback for users who can't scan. */
+.qr-fallback-note {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-normal);
+    margin: var(--space-16) 0 0;
+    padding-top: var(--space-12);
+    border-top: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.2);
+}
+
+/* The 6-digit code, demoted from hero to a small inline highlight in the fallback line. */
 .code-value {
-    display: block;
+    display: inline-block;
     color: var(--color-primary);
     font-family: 'Orbitron', var(--font-family-base);
-    font-size: 2.8rem;
+    font-size: var(--font-size-lg);
     font-weight: var(--font-weight-bold);
-    letter-spacing: 0.4rem;
-    background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(var(--color-surface-rgb, 255, 255, 253), 0.6));
-    padding: var(--space-20);
-    border-radius: var(--radius-lg);
-    border: 2px solid var(--color-primary);
+    letter-spacing: 0.15rem;
+    padding: var(--space-2) var(--space-8);
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.4);
+    white-space: nowrap;
 }
 
 .qr-container {
@@ -362,12 +423,21 @@
     justify-content: center;
 }
 
+/* network.js flips this to display:block inline once the QR (or text fallback) is ready. */
 #qr-code-container {
     display: none;
+    padding: var(--space-8);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg,
+        rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.18),
+        rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.06));
+    box-shadow: 0 0 24px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.45);
+    animation: qrGlow 3s ease-in-out infinite;
 }
 
 #qr-canvas {
-    border-radius: var(--radius-lg);
+    display: block;
+    border-radius: var(--radius-md);
     background: var(--color-surface);
     padding: var(--space-16);
     border: 2px solid var(--color-primary);
@@ -399,6 +469,17 @@
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Issue #10: QR hero glow + bouncing camera-cue arrow. */
+@keyframes qrGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.40); }
+    50%      { box-shadow: 0 0 36px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.70); }
+}
+
+@keyframes cueBounce {
+    0%, 100% { transform: translateY(0);   opacity: 0.85; }
+    50%      { transform: translateY(4px); opacity: 1; }
 }
 
 @media (min-width: 769px) {
@@ -436,6 +517,11 @@
         max-height: 60vh;
         height: auto;
     }
+
+    /* Issue #10: keep the QR card compact when it sits in the wrapped row. */
+    #qr-code-container { padding: var(--space-6); }
+    #qr-canvas { padding: var(--space-12); }
+    .qr-steps li { font-size: var(--font-size-xs); }
 }
 
 /* --- Gameplay features: Score/Best layout, sound toggle, new-high badge --- */
@@ -544,4 +630,8 @@
     .game-logo { width: 48px; height: 48px; }
     .game-title { font-size: var(--font-size-2xl); }
     .creator-text { font-size: var(--font-size-sm); }
+
+    /* Issue #10: shrink the QR card copy to match the smaller header. */
+    .qr-headline { font-size: var(--font-size-xl); }
+    .qr-fallback-note { font-size: var(--font-size-xs); }
 }
