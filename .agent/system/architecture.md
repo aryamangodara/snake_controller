@@ -10,6 +10,8 @@ deployed via Firebase Hosting. Live: https://go-console-84748.web.app/
 - **Realtime backend:** Firebase (v8 compat SDK) — **Firestore** for session metadata / game state /
   actions, **Realtime Database** for the high-frequency joystick stream. `localStorage` fallback for
   single-device use.
+- **Analytics:** Firebase Analytics (GA4) via a hardened `trackEvent()` wrapper — see
+  `.agent/system/analytics.md`.
 - **Delivery:** PWA (installable, network-first service worker) on Firebase Hosting.
 
 ## Two roles, one page
@@ -44,7 +46,9 @@ CSS load order: `variables.css` (tokens) → `base.css` → `desktop.css` / `mob
 ## Data flow
 Phone writes joystick input (RTDB) + start/restart (Firestore); desktop listens and runs physics.
 Direction is **continuous (radians), not 4-way**, and speed scales with joystick magnitude. Eating
-within `gameConfig.comboWindowMs` builds a combo multiplier (capped at `maxCombo`).
+within `gameConfig.comboWindowMs` builds a combo multiplier (capped at `maxCombo`). User actions also
+emit GA4 events through `trackEvent()` (a no-op when analytics is unavailable); see
+`.agent/system/analytics.md`.
 
 ## Design principles
 1. **Separation of concerns** — input (`controller.js`), sync (`network.js`), simulation (`game.js`),

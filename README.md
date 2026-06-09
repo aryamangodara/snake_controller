@@ -36,6 +36,7 @@ Scan a QR code and your phone becomes a wireless, analog joystick.
 - 🤳 **Flex your score** — share to WhatsApp, X, Facebook, or Instagram straight from your phone.
 - ⚡ **Offline-ready PWA** — installable, with a network-first service worker.
 - 🛟 **Single-device fallback** — a `localStorage` mode kicks in automatically when Firebase isn't available.
+- 📊 **Audience analytics** — Google Analytics 4 for audience + campaign insight, tagged desktop-host vs. phone-controller. IP-anonymized, and it never blocks gameplay.
 
 ---
 
@@ -52,7 +53,7 @@ Scan a QR code and your phone becomes a wireless, analog joystick.
 
 ## 🛠️ Tech
 
-Vanilla **JavaScript** (no bundler, no modules) · HTML5 **Canvas** · **Firebase** Firestore *(session + game state)* + Realtime Database *(joystick stream)* · **PWA** *(installable, offline shell)* · **Firebase Hosting** with auto-deploy via GitHub Actions.
+Vanilla **JavaScript** (no bundler, no modules) · HTML5 **Canvas** · **Firebase** Firestore *(session + game state)* + Realtime Database *(joystick stream)* + **Analytics (GA4)** · **PWA** *(installable, offline shell)* · **Firebase Hosting** with auto-deploy via GitHub Actions.
 
 ---
 

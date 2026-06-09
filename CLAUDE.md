@@ -57,11 +57,22 @@ joystick input (RTDB) + actions (Firestore). Mobile captures the joystick and wr
 scales with joystick magnitude. Eating again within `gameConfig.comboWindowMs` builds a combo
 multiplier (capped at `maxCombo`), surfaced as a draining yellow badge over the board.
 
+**Analytics (GA4).** Firebase Analytics loads alongside the other SDKs; `config.js` creates a
+guarded `analytics` handle (its **own** try/catch so an analytics failure never drops the app into
+offline mode). Everything goes through one helper — `trackEvent(name, params)` in `utils.js` — which
+**no-ops when analytics is unavailable** (ad-block / offline) and **never throws into gameplay**,
+auto-tagging every event with `device_role` (`desktop_host` vs `phone_controller`). Custom events
+span the funnel (`session_created`, `controller_arrival`, `controller_connected`,
+`game_start`/`game_restart`, `game_over`/`post_score`, `share`, `mute_toggle`, `pwa_install`); GA4
+auto-captures audience + `utm_*` acquisition. **Never log PII or the 6-digit session code.** Full
+reference + how to view: `.agent/system/analytics.md`.
+
 ### File roles (`public/`)
-- `js/utils.js` — small shared helpers.
+- `js/utils.js` — small shared helpers, incl. `trackEvent()` (the hardened GA4 analytics wrapper).
 - `js/logic.js` — **pure, testable** game math: joystick→angle/speed mapping, collision, turn step.
   Unit-tested in `tests/` (the only code with real coverage).
-- `js/config.js` — Firebase init + all tunables (`gameConfig`) + `colors` + `GameState` enum.
+- `js/config.js` — Firebase init (incl. the guarded `analytics` / GA4 handle) + all tunables
+  (`gameConfig`) + `colors` + `GameState` enum.
 - `js/state.js` — the global mutable state objects.
 - `js/leaderboard.js` — **local** high-score tracking via `localStorage`. **Not** a global/Firestore
   leaderboard (despite the name — that was scoped but never built).
@@ -94,6 +105,10 @@ multiplier (capped at `maxCombo`), surfaced as a draining yellow badge over the 
   not fully captured in version control.
 - Everything shares global scope — renaming a function or variable can silently break a consumer
   in another file.
+- **ESLint `no-unused-vars` false positives** are expected for the cross-file globals declared in
+  `config.js` (`app`, `database`, `firestore`, `analytics`, `firebaseReady`): they're consumed in
+  *other* files, but ESLint lints each file alone. They're **warnings** (the lint command still
+  exits 0), and `no-undef` is already `off` for the consumer side — safe to ignore.
 - The PWA **service worker is network-first**, so online users always get fresh code — but an
   already-installed SW still needs one reload to update after a deploy. When you change shell
   assets, bump `const CACHE` in `sw.js`. (Local preview can serve stale assets; see
