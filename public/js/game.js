@@ -128,6 +128,7 @@ function startGameLoop() {
 function startGame() {
     console.log('🚀 Starting game with continuous snake movement!');
     gameState.currentState = GameState.PLAYING;
+    trackEvent('game_start', {});
     playStartSound();
     gameState.direction = 0; // Start facing right
     gameState.targetDirection = 0;
@@ -154,6 +155,7 @@ function startGame() {
  */
 function restartGame() {
     console.log('🔄 Restarting game with continuous movement!');
+    trackEvent('game_restart', {});
     
     gameState = {
         snake: createInitialSnake(),
@@ -591,6 +593,11 @@ function gameOver() {
     updateHighScoreDisplay();
     const newHighEl = document.getElementById('new-high-score');
     if (newHighEl) newHighEl.classList.toggle('hidden', !isNewBest);
+
+    // Analytics: the run's score + whether it set a new personal best. post_score is a
+    // GA4-recommended event that surfaces in the Games engagement reports.
+    trackEvent('game_over', { score: gameState.score, is_high_score: isNewBest });
+    trackEvent('post_score', { score: gameState.score });
 
     // Hitstop: let the impact register for a beat before the modal slides in. The
     // snake is already frozen (state = GAME_OVER), so the canvas just keeps shaking.

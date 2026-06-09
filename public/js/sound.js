@@ -67,6 +67,7 @@ function playStartSound() {
  */
 function toggleMute() {
     soundMuted = !soundMuted;
+    trackEvent('mute_toggle', { muted: soundMuted });
     try {
         localStorage.setItem('snake_muted', JSON.stringify(soundMuted));
     } catch (error) {
