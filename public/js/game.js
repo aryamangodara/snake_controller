@@ -512,7 +512,7 @@ function renderGame() {
         ctx.shadowBlur = 10;
 
         ctx.fillText('📱 Scan the QR with your phone to play', W / 2, H / 2 - 20);
-        ctx.fillText('The snake moves the moment you connect!', W / 2, H / 2 + 20);
+        ctx.fillText('Tap play to start - the snake never stops!', W / 2, H / 2 + 20);
         
         ctx.shadowBlur = 0;
     }
