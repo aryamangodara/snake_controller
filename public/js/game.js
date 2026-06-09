@@ -511,8 +511,8 @@ function renderGame() {
         ctx.shadowColor = '#22d3c5';
         ctx.shadowBlur = 10;
 
-        ctx.fillText('Waiting for Mobile Controller', W / 2, H / 2 - 20);
-        ctx.fillText('Snake Moves Continuously - Be Ready!', W / 2, H / 2 + 20);
+        ctx.fillText('📱 Scan the QR with your phone to play', W / 2, H / 2 - 20);
+        ctx.fillText('The snake moves the moment you connect!', W / 2, H / 2 + 20);
         
         ctx.shadowBlur = 0;
     }

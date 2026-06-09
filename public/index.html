@@ -142,12 +142,12 @@
                     </div>
 
                     <div class="connection-card">
-                        <div class="session-code">
-                            <span class="code-label">Session Code:</span>
-                            <span id="session-code" class="code-value">123456</span>
-                        </div>
+                        <h3 class="qr-headline">📱 Scan to Play</h3>
+                        <p class="qr-subhead">Point your phone camera here</p>
+                        <div class="camera-cue" aria-hidden="true">▼</div>
+
                         <div class="qr-container">
-                            <div id="qr-code-container">
+                            <div id="qr-code-container" class="qr-hero">
                                 <canvas id="qr-canvas" width="150" height="150"></canvas>
                             </div>
                             <div id="qr-loading" class="qr-loading">
@@ -155,6 +155,17 @@
                                 <p>Generating QR Code...</p>
                             </div>
                         </div>
+
+                        <ol class="qr-steps">
+                            <li><span class="step-num">1</span> Scan with your phone camera</li>
+                            <li><span class="step-num">2</span> It becomes your controller</li>
+                            <li><span class="step-num">3</span> Play!</li>
+                        </ol>
+
+                        <p class="qr-fallback-note">
+                            No camera? Open this site &amp; enter
+                            <span id="session-code" class="code-value">123456</span>
+                        </p>
                     </div>
                 </div>
             </div>
