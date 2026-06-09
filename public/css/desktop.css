@@ -504,6 +504,7 @@
     border: 1px solid rgba(255, 207, 77, 0.5);
     text-shadow: 0 0 10px rgba(255, 207, 77, 0.8);
     pointer-events: none;
+    overflow: hidden;
     z-index: 5;
     animation: comboPop var(--duration-fast) var(--ease-standard);
 }
@@ -511,6 +512,31 @@
 @keyframes comboPop {
     0% { transform: scale(0.6); opacity: 0; }
     100% { transform: scale(1); opacity: 1; }
+}
+
+/* Streak badge depletion timer (issue #9): a yellow fill that drains over the combo window.
+   The animation (duration = gameConfig.comboWindowMs) is applied inline from game.js and
+   restarted on each eat. */
+.combo-fill {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: linear-gradient(90deg, #ffd166, #ffb703);
+    transform-origin: left center;
+    transform: scaleX(1);
+}
+
+.combo-label {
+    position: relative;
+    z-index: 1;
+    color: #ffffff;
+    /* Readable over BOTH the yellow fill and the drained-dark area. */
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+
+@keyframes comboDeplete {
+    from { transform: scaleX(1); }
+    to   { transform: scaleX(0); }
 }
 
 /* Shrink the header on smaller laptops so it stays proportionate. */
