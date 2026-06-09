@@ -220,22 +220,63 @@ function handleCenterButtonPress() {
 // Tracks the last feedback event we vibrated for, so repeated snapshot
 // deliveries of the same event don't buzz more than once.
 let lastFeedbackAt = 0;
+// Tracks the last synced game state so the loss reaction (haptic + flash) fires
+// exactly ONCE per loss, not on every snapshot. Re-arms when a new game starts.
+let lastSyncedState = null;
 
 /**
- * Vibrate the phone in response to a feedback event from the desktop host.
- * Vibration is supported mainly on Android; elsewhere this is a no-op.
+ * Fire a haptic buzz on the phone — cross-platform and best-effort. Never throws.
+ *   • Android (Chrome/Firefox): the real Vibration API.
+ *   • iOS Safari: navigator.vibrate has NEVER existed, so we fall back to the hidden
+ *     <input switch> trick (Safari 17.4+). Apple patched *programmatic* triggering in
+ *     iOS 26.5, so there (and on unsupported browsers) this is a harmless no-op — the
+ *     on-screen .loss-flash cue is what covers iPhones.
+ * Independent of the audio mute by design: a silenced player still feels the loss.
+ * @param {number|number[]} pattern - ms, or an on/off pattern array.
+ */
+function triggerHaptic(pattern) {
+    try {
+        if (typeof navigator.vibrate === 'function') { navigator.vibrate(pattern); return; }
+        const label = document.createElement('label');
+        label.setAttribute('aria-hidden', 'true');
+        label.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;';
+        const sw = document.createElement('input');
+        sw.type = 'checkbox';
+        sw.setAttribute('switch', '');
+        label.appendChild(sw);
+        document.body.appendChild(label);
+        try { label.click(); } finally { label.remove(); }
+    } catch (e) {
+        /* haptics must never throw into gameplay */
+    }
+}
+
+/**
+ * Phone-side haptic for a one-shot feedback event from the desktop host (food only;
+ * the loss buzz is driven off the GAME_OVER transition in updateMobileGameOver).
  * @param {{type:string, at:number}} feedback
  */
 function handleHapticFeedback(feedback) {
     if (!feedback || typeof feedback.at !== 'number' || feedback.at === lastFeedbackAt) return;
     lastFeedbackAt = feedback.at;
+    if (feedback.type === 'food') triggerHaptic(40);
+}
 
-    if (!('vibrate' in navigator)) return;
-    if (feedback.type === 'crash') {
-        navigator.vibrate([100, 50, 100]);
-    } else if (feedback.type === 'food') {
-        navigator.vibrate(40);
-    }
+/**
+ * Brief shake + red danger flash on the game-over card — the iOS-safe loss cue (works
+ * where haptics can't). Re-triggers reliably by forcing a reflow before re-adding the
+ * class, and self-cleans on animationend.
+ * @param {HTMLElement} card - the #mobile-game-over element.
+ */
+function playLossFlash(card) {
+    const target = card.querySelector('.mobile-game-over-content') || card;
+    target.classList.remove('loss-flash');
+    void target.offsetWidth; // force reflow so the animation restarts from frame 0
+    target.classList.add('loss-flash');
+    target.addEventListener('animationend', function handler() {
+        target.classList.remove('loss-flash');
+        target.removeEventListener('animationend', handler);
+    });
 }
 
 function connectToSession(sessionCode) {
@@ -442,9 +483,18 @@ function updateMobileGameOver(gs) {
         const scoreEl = document.getElementById('mobile-final-score');
         if (scoreEl) scoreEl.textContent = (typeof gs.score === 'number' ? gs.score : gameState.score).toString();
         card.classList.remove('hidden');
+
+        // React ONCE per loss: a strong "you lost" buzz + an on-screen shake/flash.
+        // Driven off the state edge so it works in BOTH Firebase and localStorage modes.
+        if (lastSyncedState !== GameState.GAME_OVER) {
+            triggerHaptic([120, 60, 120, 60, 240]);
+            playLossFlash(card);
+        }
     } else {
         card.classList.add('hidden');
     }
+
+    lastSyncedState = gs.state;
 }
 
 // ==========================================
