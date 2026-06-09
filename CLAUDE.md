@@ -10,14 +10,18 @@ https://go-console-84748.web.app/
 
 ## Commands
 
-- `npm install` — install dev deps (only `firebase-tools`).
+- `npm install` — install dev tooling (`firebase-tools`, `eslint`, `vitest`, `prettier`).
 - `npm start` — serve `public/` locally (`npx serve -s public`). Open the printed URL; append
   `?session=123456` to force the mobile/controller view in a second tab/device.
+- `npm run lint` (ESLint) · `npm test` (Vitest — pure-logic unit tests in `tests/`) ·
+  `npm run format` (Prettier).
 - **Deploy is automatic** on push to `master` via GitHub Actions
-  (`.github/workflows/deploy.yml`), which runs `firebase deploy --only hosting`. Do **not** run
-  `firebase deploy` by hand (`.agent/workflows/deploy.md`). Note the Action deploys *hosting
-  only* — changes to `database.rules.json` or Firestore rules are **not** shipped by CI.
-- No lint or test setup yet.
+  (`.github/workflows/deploy.yml`, "Fast Deploy - CI/CD"), which runs `firebase deploy --only
+  hosting`. Do **not** run `firebase deploy` by hand (`.agent/workflows/deploy.md`). Note the
+  Action deploys *hosting only* — changes to `database.rules.json` or Firestore rules are **not**
+  shipped by CI.
+- CI runs `lint` + `test`, but both are **non-blocking** (`continue-on-error`) until verified green;
+  the build is gated only on `node --check` syntax + a couple of grep sanity checks.
 
 ## Architecture (the non-obvious parts)
 
@@ -25,7 +29,8 @@ https://go-console-84748.web.app/
 order, all sharing one global scope:
 
 ```
-config.js → state.js → network.js → game.js → controller.js → main.js
+utils.js → logic.js → config.js → state.js → leaderboard.js → sound.js → effects.js →
+network.js → game.js → share.js → controller.js → main.js
 ```
 
 Functions and the large mutable state objects (`gameState`, `sessionManager`, `joystickState`,
@@ -49,16 +54,27 @@ SDK (`firebase.firestore()`, `firebase.database()`), *not* v9 modular:
 **Data flow.** Desktop owns the game loop, physics, and collision (`game.js`) and listens for
 joystick input (RTDB) + actions (Firestore). Mobile captures the joystick and writes input
 (RTDB) + start/restart (Firestore). Direction is **continuous (radians), not 4-way**; speed
-scales with joystick magnitude.
+scales with joystick magnitude. Eating again within `gameConfig.comboWindowMs` builds a combo
+multiplier (capped at `maxCombo`), surfaced as a draining yellow badge over the board.
 
 ### File roles (`public/`)
+- `js/utils.js` — small shared helpers.
+- `js/logic.js` — **pure, testable** game math: joystick→angle/speed mapping, collision, turn step.
+  Unit-tested in `tests/` (the only code with real coverage).
 - `js/config.js` — Firebase init + all tunables (`gameConfig`) + `colors` + `GameState` enum.
 - `js/state.js` — the global mutable state objects.
+- `js/leaderboard.js` — **local** high-score tracking via `localStorage`. **Not** a global/Firestore
+  leaderboard (despite the name — that was scoped but never built).
+- `js/sound.js` — synthesized Web Audio SFX (food/crash/start) + mute toggle; food pitch rises with the combo.
+- `js/effects.js` — juice: particle bursts, ripples, score pops, screen shake (desktop render).
 - `js/network.js` — desktop session lifecycle, Firestore/RTDB wiring, QR generation, localStorage fallback.
-- `js/game.js` — canvas rendering, movement, and collision (desktop only).
-- `js/controller.js` — mobile joystick capture and connection.
+- `js/game.js` — desktop game loop: canvas rendering, movement, collision, and the combo lifecycle.
+- `js/share.js` — the phone game-over card + social share intents (WhatsApp / X / Facebook / Instagram).
+- `js/controller.js` — mobile joystick capture, connection, and game-over-card wiring.
 - `js/main.js` — entry point / device detection.
 - `css/` — load order `variables.css` (tokens) → `base.css` → `desktop.css` / `mobile.css`.
+- `sw.js` + `manifest.json` — PWA: installable + offline shell. The SW is **network-first** for
+  same-origin requests (cache = offline fallback only); bump `CACHE` when shell assets change.
 
 ## Conventions
 
@@ -78,3 +94,7 @@ scales with joystick magnitude.
   not fully captured in version control.
 - Everything shares global scope — renaming a function or variable can silently break a consumer
   in another file.
+- The PWA **service worker is network-first**, so online users always get fresh code — but an
+  already-installed SW still needs one reload to update after a deploy. When you change shell
+  assets, bump `const CACHE` in `sw.js`. (Local preview can serve stale assets; see
+  `.claude` memory / unregister the SW + clear caches when verifying.)

@@ -26,21 +26,20 @@ Thank you for your interest in contributing! We welcome contributions from devel
    firebase init hosting
    ```
 
-3. **Start local development server**
+3. **Start a local server** (no build step — just serve `public/`)
    ```bash
-   # Using Python
-   python -m http.server 8000
-   
-   # Using Node.js
-   npx http-server
-   
-   # Using PHP
-   php -S localhost:8000
+   # Project script (Node)
+   npm install && npm start                      # → npx serve -s public (http://localhost:3000)
+
+   # …or any static server, pointed at public/
+   python -m http.server 8000 --directory public
+   npx http-server public
    ```
 
-4. **Test the application**
-   - Desktop: `http://localhost:8000?mode=desktop`
-   - Mobile: `http://localhost:8000?mode=mobile`
+4. **Open the app**
+   - **Desktop (host):** open the served URL (e.g. `http://localhost:3000`) in a normal-width window.
+   - **Mobile (controller):** append `?session=123456` to that URL, or open it on a phone. The view
+     is chosen by viewport width (`<= 768px`) or the `?session=` param — there is **no** `?mode=` flag.
 
 ## 🎯 How to Contribute
 
@@ -83,11 +82,11 @@ Thank you for your interest in contributing! We welcome contributions from devel
    - Test on different screen sizes
    - Verify joystick functionality
 
-4. **Commit with clear messages**
+4. **Commit with [Conventional Commits](https://www.conventionalcommits.org/)** (`feat | fix | refactor | style`)
    ```bash
-   git commit -m "Add: New joystick sensitivity setting"
-   git commit -m "Fix: Mobile connection timeout issue"
-   git commit -m "Update: README installation instructions"
+   git commit -m "feat(controller): add joystick sensitivity setting"
+   git commit -m "fix(network): handle mobile connection timeout"
+   git commit -m "docs: update local-dev instructions"
    ```
 
 5. **Push and create PR**
@@ -124,19 +123,19 @@ function handleJoystickInput(input) {
 
 ### CSS
 ```css
-/* Use BEM methodology for CSS classes */
-.joystick__base {
+/* Class names are kebab-case (not BEM); keep them descriptive. */
+.joystick-base {
     position: relative;
 }
 
-.joystick__handle--dragging {
+.joystick-handle.dragging {
     transform: scale(1.1);
 }
 
-/* Use CSS custom properties for themes */
-:root {
-    --primary-color: #ff1493;
-    --background-color: #0a0a0a;
+/* Reuse the design tokens in css/variables.css — the palette is teal/gold, not pink. */
+.score-value {
+    color: var(--color-primary);          /* teal */
+    background: var(--color-background);   /* near-black */
 }
 ```
 
@@ -179,23 +178,27 @@ function handleJoystickInput(input) {
 ## 🏗️ Project Structure
 
 ```
-├── public/
-│   ├── css/           # Modular CSS files
-│   ├── js/            # Modular Javascript logic
-│   ├── index.html     # Main HTML structure
-│   └── ...            # Assets and other scripts
-├── firebase.json       # Firebase hosting configuration
-├── .github/
-│   ├── workflows/      # GitHub Actions CI/CD
-│   └── ISSUE_TEMPLATE/ # Issue templates
-└── README.md           # Project documentation
+├── public/                 # Everything that ships (Firebase Hosting serves this)
+│   ├── css/                # variables → base → desktop / mobile (load order matters)
+│   ├── js/                 # 12 plain <script>s, one shared global scope, no bundler
+│   ├── index.html          # both views: desktop host + mobile controller
+│   ├── sw.js               # network-first service worker (PWA offline shell)
+│   └── manifest.json       # PWA manifest
+├── tests/                  # Vitest unit tests for js/logic.js
+├── firebase.json           # Firebase Hosting config
+├── .github/workflows/      # GitHub Actions CI/CD (auto-deploy on master)
+├── CLAUDE.md               # architecture map for contributors & AI agents
+└── .agent/                 # deeper semantic index (SOPs, workflows, architecture)
 ```
 
 ### Key Components
-- **Game Engine**: Canvas-based rendering in `app.js`
-- **Session Management**: Firebase/localStorage hybrid system
-- **Mobile Controller**: Touch-based joystick interface
-- **Connection System**: QR code + manual code entry
+- **Game engine** — canvas rendering, movement, collision, and combo logic in `js/game.js`
+  (pure math factored into `js/logic.js`, which is unit-tested in `tests/`).
+- **Session sync** — Firestore (state/actions) + Realtime Database (joystick), with a
+  `localStorage` fallback, in `js/network.js` / `js/controller.js`.
+- **Mobile controller** — touch joystick + center ▶ button in `js/controller.js`.
+- **Connection** — QR code + 6-digit code; scanning auto-connects via a `?session=` URL param.
+- **Feel** — `js/sound.js` (Web Audio SFX), `js/effects.js` (particles/shake), `js/share.js` (score card).
 
 ## 🐛 Common Issues & Solutions
 
