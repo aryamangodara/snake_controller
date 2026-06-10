@@ -5,7 +5,7 @@
 // cache is an OFFLINE FALLBACK only. All cross-origin traffic (Firebase, gstatic, unpkg, Font
 // Awesome) is left untouched so realtime sync keeps working. Bump CACHE when shell assets change.
 
-const CACHE = 'snake-shell-v6';
+const CACHE = 'snake-shell-v7';
 
 const SHELL_ASSETS = [
     './',
@@ -15,11 +15,13 @@ const SHELL_ASSETS = [
     './css/base.css',
     './css/desktop.css',
     './css/mobile.css',
+    './css/leaderboard.css',
     './js/utils.js',
     './js/logic.js',
     './js/config.js',
     './js/state.js',
     './js/leaderboard.js',
+    './js/leaderboard-ui.js',
     './js/sound.js',
     './js/effects.js',
     './js/network.js',
@@ -62,10 +64,19 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
         fetch(event.request, { cache: 'no-cache' })
             .then((response) => {
-                const copy = response.clone();
-                caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+                // Only cache good responses — a cached 404 would shadow a later fix.
+                if (response.ok) {
+                    const copy = response.clone();
+                    caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+                }
                 return response;
             })
-            .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
+            // Offline: serve the cached asset. The index.html fallback applies ONLY to
+            // navigations — handing HTML to a failed JS/CSS request just breaks the page.
+            .catch(() => caches.match(event.request).then((cached) => {
+                if (cached) return cached;
+                if (event.request.mode === 'navigate') return caches.match('./index.html');
+                return Response.error();
+            }))
     );
 });

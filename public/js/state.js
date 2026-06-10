@@ -20,27 +20,37 @@ function createInitialSnake() {
     ];
 }
 
+/**
+ * Builds a fresh initial game state. The SINGLE construction site for the state
+ * shape — used both for the boot-time global below and by restartGame() (game.js),
+ * so a new field can never silently exist in one and not the other.
+ * @returns {object} A complete, fresh gameState object.
+ */
+function createInitialGameState() {
+    return {
+        snake: createInitialSnake(),
+        direction: 0, // Current movement direction in radians
+        targetDirection: 0, // Target direction from joystick input
+        baseSpeed: gameConfig.baseSpeed, // Always moving at this minimum speed
+        currentSpeed: gameConfig.baseSpeed, // Current total speed (base + input boost)
+        food: {
+            x: gameConfig.boardSize.width * 0.75,
+            y: gameConfig.boardSize.height * 0.25
+        },
+        score: 0,
+        gameRunning: false,
+        lastUpdateTime: 0,
+        lastMoveTime: 0, // For consistent smooth movement timing
+        currentState: GameState.WAITING_FOR_START,
+        joystickInput: { x: 0, y: 0 },
+        frameCount: 0,
+        combo: 0,          // Current eat streak (drives the score multiplier)
+        lastFoodTime: 0    // Timestamp of the last food eaten (for the combo window)
+    };
+}
+
 // Global game state - Enhanced for constant movement
-let gameState = {
-    snake: createInitialSnake(),
-    direction: 0, // Current movement direction in radians
-    targetDirection: 0, // Target direction from joystick input
-    baseSpeed: gameConfig.baseSpeed, // Always moving at this minimum speed
-    currentSpeed: gameConfig.baseSpeed, // Current total speed (base + input boost)
-    food: { 
-        x: gameConfig.boardSize.width * 0.75, 
-        y: gameConfig.boardSize.height * 0.25 
-    },
-    score: 0,
-    gameRunning: false,
-    lastUpdateTime: 0,
-    lastMoveTime: 0, // For consistent smooth movement timing
-    currentState: GameState.WAITING_FOR_START,
-    joystickInput: { x: 0, y: 0 },
-    frameCount: 0,
-    combo: 0,          // Current eat streak (drives the score multiplier)
-    lastFoodTime: 0    // Timestamp of the last food eaten (for the combo window)
-};
+let gameState = createInitialGameState();
 
 // Enhanced session management with better error handling
 let sessionManager = {

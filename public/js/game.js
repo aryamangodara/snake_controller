@@ -160,26 +160,12 @@ function restartGame() {
     console.log('🔄 Restarting game with continuous movement!');
     trackEvent('game_restart', {});
     
-    gameState = {
-        snake: createInitialSnake(),
-        direction: 0,
-        targetDirection: 0,
-        baseSpeed: gameConfig.baseSpeed,
-        currentSpeed: gameConfig.baseSpeed,
-        food: { 
-            x: gameConfig.boardSize.width * 0.75, 
-            y: gameConfig.boardSize.height * 0.25 
-        },
-        score: 0,
+    gameState = Object.assign(createInitialGameState(), {
         gameRunning: true,
         lastUpdateTime: performance.now(),
         lastMoveTime: performance.now(),
-        currentState: GameState.PLAYING,
-        joystickInput: { x: 0, y: 0 },
-        frameCount: 0,
-        combo: 0,
-        lastFoodTime: 0
-    };
+        currentState: GameState.PLAYING
+    });
 
     updateScore();
     resetEffects();
@@ -629,8 +615,12 @@ function submitAndShowRank(score) {
     Promise.resolve(submitGlobalScore(score)).then((rank) => {
         if (!callout) return;
         if (rank) {
-            callout.textContent = `You ranked #${rank} globally 🏆`;
-            trackEvent('leaderboard_submit', { score: score, rank: rank });
+            // The rank query is capped (see getPlayerRank): past the cap we only
+            // know you're below the top LB_RANK_CAP, not exactly where.
+            callout.textContent = rank > LB_RANK_CAP
+                ? `You're in the global Top ${LB_RANK_CAP}+ 🏆`
+                : `You ranked #${rank} globally 🏆`;
+            trackEvent('leaderboard_submit', { score: score, rank: Math.min(rank, LB_RANK_CAP + 1) });
         } else {
             callout.textContent = 'Leaderboard unavailable';
         }
