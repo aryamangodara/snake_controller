@@ -361,12 +361,23 @@ async function connectViaRobustHybrid(sessionCode) {
             
         } else {
             debugLog('❌ Session not found in Firestore');
-            throw new Error(`Session ${sessionCode} not found in Firestore. Make sure the game is running on desktop.`);
+            const err = new Error(`Session ${sessionCode} not found in Firestore. Make sure the game is running on desktop.`);
+            err.notFound = true;
+            throw err;
         }
-        
+
     } catch (error) {
         console.error('❌ Hybrid connection failed:', error);
-        
+
+        // Firebase answered fine — the code is just wrong (typo, or the desktop closed).
+        // Retrying or silently dropping into single-device localStorage mode would only
+        // confuse the player; tell them plainly and let them re-enter the code.
+        if (error.notFound) {
+            sessionManager.connectionRetries = 0;
+            showConnectionError('Session not found — check the 6-digit code on the game screen.');
+            return;
+        }
+
         sessionManager.connectionRetries++;
         if (sessionManager.connectionRetries < gameConfig.connectionRetries) {
             debugLog(`🔄 Retrying connection in ${gameConfig.retryDelayMs/1000} seconds...`);

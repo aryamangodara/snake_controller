@@ -88,6 +88,13 @@ function setupKeyboardControls() {
             applyKeyboardDirection();
         }
     });
+
+    // Keys released while the tab is unfocused never fire keyup here, which would
+    // leave the snake steering toward a "held" key forever. Clear on focus loss.
+    window.addEventListener('blur', () => {
+        activeDirectionKeys.clear();
+        applyKeyboardDirection();
+    });
 }
 
 /**
@@ -139,6 +146,7 @@ function startGame() {
     gameState.currentSpeed = gameConfig.baseSpeed;
     gameState.joystickInput = { x: 0, y: 0 };
     gameState.frameCount = 0;
+    gameState.lastUpdateTime = performance.now();
     gameState.lastMoveTime = performance.now();
     gameState.combo = 0;
     gameState.lastFoodTime = 0;
@@ -612,8 +620,9 @@ function gameOver() {
 function submitAndShowRank(score) {
     const callout = document.getElementById('global-rank');
     if (callout) { callout.classList.remove('hidden'); callout.textContent = 'Submitting to leaderboard…'; }
-    Promise.resolve(submitGlobalScore(score)).then((rank) => {
+    Promise.resolve(submitGlobalScore(score)).then((result) => {
         if (!callout) return;
+        const rank = result && result.rank;
         if (rank) {
             // The rank query is capped (see getPlayerRank): past the cap we only
             // know you're below the top LB_RANK_CAP, not exactly where.
@@ -621,6 +630,10 @@ function submitAndShowRank(score) {
                 ? `You're in the global Top ${LB_RANK_CAP}+ 🏆`
                 : `You ranked #${rank} globally 🏆`;
             trackEvent('leaderboard_submit', { score: score, rank: Math.min(rank, LB_RANK_CAP + 1) });
+        } else if (result && result.submitted) {
+            // The write landed but the rank query failed — don't tell the player it's broken.
+            callout.textContent = 'Score submitted 🏆';
+            trackEvent('leaderboard_submit', { score: score, rank: 0 });
         } else {
             callout.textContent = 'Leaderboard unavailable';
         }
@@ -639,6 +652,7 @@ function showNameEntry(score) {
     if (!entry || !input) return;
     entry.classList.remove('hidden');
     input.value = '';
+    input.classList.remove('lb-invalid');
     setTimeout(() => input.focus(), 50);
     const confirmName = () => {
         const saved = setPlayerName(input.value);
@@ -649,6 +663,8 @@ function showNameEntry(score) {
     const joinBtn = document.getElementById('join-leaderboard-btn');
     if (joinBtn) joinBtn.onclick = confirmName;
     input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmName(); } };
+    // A failed attempt turns the border red; clear it as soon as the player retypes.
+    input.oninput = () => input.classList.remove('lb-invalid');
 }
 
 /**

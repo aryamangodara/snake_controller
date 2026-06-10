@@ -64,6 +64,9 @@
     "openLeaderboard": "readonly",
     "closeLeaderboard": "readonly",
     "lbToggle": "readonly",
+    "LB_CACHE_MS": "readonly",
+    "lbCacheRows": "writable",
+    "lbCacheAt": "writable",
     "renderLeaderboard": "readonly",
 
     "audioCtx": "readonly",
@@ -88,6 +91,7 @@
     "generateUniqueSessionCode": "readonly",
     "setupRobustHybridSession": "readonly",
     "waitForFirebaseReady": "readonly",
+    "desktopStorageListenerAttached": "writable",
     "setupLocalStorageSession": "readonly",
     "generateQRCode": "readonly",
     "renderJoinFallback": "readonly",

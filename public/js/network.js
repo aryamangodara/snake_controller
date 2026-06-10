@@ -182,6 +182,10 @@ function waitForFirebaseReady() {
     });
 }
 
+// True once the desktop's localStorage-mode 'storage' listener is attached, so repeated
+// session setups (e.g. Firebase failing after a retry) don't stack duplicate handlers.
+let desktopStorageListenerAttached = false;
+
 /**
  * LocalStorage polling backup method if Firebase fails.
  */
@@ -196,22 +200,27 @@ function setupLocalStorageSession(sessionCode) {
         ready: true
     }));
     
-    // Listen for localStorage changes
-    window.addEventListener('storage', function(e) {
-        if (e.key === `session_${sessionCode}_joystick`) {
-            const data = safeParse(e.newValue, {});
-            if (data.joystick) {
-                handleJoystickInputFromMobile(data.joystick);
-                updateConnectionStatus('Mobile controller connected (localStorage) ✅');
+    // Listen for localStorage changes (guarded so repeat session setups don't stack handlers)
+    if (!desktopStorageListenerAttached) {
+        desktopStorageListenerAttached = true;
+        window.addEventListener('storage', function(e) {
+            const code = sessionManager.currentSession;
+            if (!code) return;
+            if (e.key === `session_${code}_joystick`) {
+                const data = safeParse(e.newValue, {});
+                if (data.joystick) {
+                    handleJoystickInputFromMobile(data.joystick);
+                    updateConnectionStatus('Mobile controller connected (localStorage) ✅');
+                }
+            } else if (e.key === `session_${code}_action`) {
+                const data = safeParse(e.newValue, {});
+                if (data.action) {
+                    handleGameActionFromMobile(data.action);
+                    localStorage.removeItem(`session_${code}_action`);
+                }
             }
-        } else if (e.key === `session_${sessionCode}_action`) {
-            const data = safeParse(e.newValue, {});
-            if (data.action) {
-                handleGameActionFromMobile(data.action);
-                localStorage.removeItem(`session_${sessionCode}_action`);
-            }
-        }
-    });
+        });
+    }
     
     sessionManager.sessionReady = true;
     updateConnectionStatus('Waiting for mobile controller (localStorage mode)...');

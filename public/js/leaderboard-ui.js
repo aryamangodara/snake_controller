@@ -22,6 +22,11 @@ function lbToggle(id, on) {
     if (el) el.classList.toggle('hidden', !on);
 }
 
+// Short-lived cache so rapid re-opens of the modal don't re-hit Firestore each time.
+const LB_CACHE_MS = 30000;
+let lbCacheRows = null;
+let lbCacheAt = 0;
+
 async function renderLeaderboard() {
     lbToggle('lb-loading', true);
     lbToggle('lb-list', false);
@@ -35,7 +40,13 @@ async function renderLeaderboard() {
         return;
     }
 
-    const rows = await fetchTopScores(10);
+    let rows;
+    if (lbCacheRows && Date.now() - lbCacheAt < LB_CACHE_MS) {
+        rows = lbCacheRows;
+    } else {
+        rows = await fetchTopScores(10);
+        if (rows.length) { lbCacheRows = rows; lbCacheAt = Date.now(); }
+    }
     lbToggle('lb-loading', false);
     if (!rows.length) { lbToggle('lb-empty', true); return; }
 

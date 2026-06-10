@@ -48,6 +48,11 @@
     cursor: pointer;
 }
 
+.lb-close:focus-visible {
+    outline: var(--focus-outline);
+    border-radius: var(--radius-base);
+}
+
 .lb-list {
     list-style: none;
     margin: 0;
