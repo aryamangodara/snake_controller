@@ -30,6 +30,7 @@
   /* RGB versions for opacity control */
   --color-brown-600-rgb: 94, 82, 64;
   --color-teal-500-rgb: 33, 128, 141;
+  --color-teal-700-rgb: 26, 104, 115;
   --color-slate-900-rgb: 19, 52, 59;
   --color-slate-500-rgb: 98, 108, 113;
   --color-red-500-rgb: 192, 21, 47;
@@ -82,6 +83,8 @@
   --color-error-rgb: 192, 21, 47;
   --color-warning-rgb: 168, 75, 47;
   --color-info-rgb: 98, 108, 113;
+  --color-surface-rgb: 255, 255, 253;
+  --color-background-rgb: 252, 252, 249;
 
   /* Typography */
   --font-family-base: "FKGroteskNeue", "Geist", "Inter", -apple-system,
@@ -206,6 +209,8 @@
     --color-error-rgb: var(--color-red-400-rgb);
     --color-warning-rgb: var(--color-orange-400-rgb);
     --color-info-rgb: var(--color-gray-300-rgb);
+    --color-surface-rgb: 38, 40, 40;
+    --color-background-rgb: 31, 33, 33;
   }
 }
 
@@ -216,6 +221,8 @@
   --color-surface: var(--color-charcoal-800);
   --color-text: var(--color-gray-200);
   --color-primary: var(--color-teal-300);
+  --color-surface-rgb: 38, 40, 40;
+  --color-background-rgb: 31, 33, 33;
 }
 
 [data-color-scheme="light"] {
@@ -223,6 +230,8 @@
   --color-surface: var(--color-cream-100);
   --color-text: var(--color-slate-900);
   --color-primary: var(--color-teal-500);
+  --color-surface-rgb: 255, 255, 253;
+  --color-background-rgb: 252, 252, 249;
 }
 
 @font-face {

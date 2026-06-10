@@ -98,31 +98,40 @@ function setPlayerName(name) {
 }
 
 /**
- * Upsert this device's row when `score` beats our last submission. Resolves to the
- * player's global rank (number) or null on any failure/no-op. Never throws.
+ * Upsert this device's row when `score` beats our last submission. Never throws.
+ * Resolves to `{ submitted, rank }` so callers can tell "the write landed but the
+ * rank query failed" apart from "the leaderboard is unreachable":
+ *   - submitted: true when a new best was written this call.
+ *   - rank: the player's global rank, or null when the rank query failed.
  * @param {number} score
- * @returns {Promise<number|null>}
+ * @returns {Promise<{submitted: boolean, rank: (number|null)}>}
  */
 async function submitGlobalScore(score) {
+    const result = { submitted: false, rank: null };
     try {
-        if (typeof firestore === 'undefined' || !firebaseReady || !firestore) return null;
+        if (typeof firestore === 'undefined' || !firebaseReady || !firestore) return result;
         const name = getPlayerName();
-        if (typeof score !== 'number' || score <= 0 || score > LB_SCORE_CEILING || !name) return null;
+        if (typeof score !== 'number' || score <= 0 || score > LB_SCORE_CEILING || !name) return result;
 
         const prevBest = Number(localStorage.getItem(LB_BEST_KEY)) || 0;
-        if (score <= prevBest) return await getPlayerRank(score); // already submitted higher/equal
+        if (score <= prevBest) { // already submitted higher/equal — just report rank
+            result.rank = await getPlayerRank(score);
+            return result;
+        }
 
         await firestore.collection(LB_COLLECTION).doc(getPlayerId()).set({
             name: name,
             score: score,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
+        result.submitted = true;
 
         try { localStorage.setItem(LB_BEST_KEY, String(score)); } catch (e) { /* ignore */ }
-        return await getPlayerRank(score);
+        result.rank = await getPlayerRank(score);
+        return result;
     } catch (error) {
         console.warn('submitGlobalScore failed (are the leaderboard rules deployed?):', error);
-        return null;
+        return result;
     }
 }
 

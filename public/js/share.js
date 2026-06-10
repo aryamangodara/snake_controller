@@ -33,9 +33,10 @@ function showToast(message) {
     toast._hideTimer = setTimeout(() => toast.classList.remove('toast--visible'), 2600);
 }
 
-/** Open a popup window for a web share intent. */
+/** Open a popup window for a web share intent; surface a hint when a blocker eats it. */
 function openShareWindow(url) {
-    window.open(url, '_blank', 'noopener,noreferrer,width=600,height=520');
+    const win = window.open(url, '_blank', 'noopener,noreferrer,width=600,height=520');
+    if (!win) showToast('Popup blocked — allow popups to share.');
 }
 
 /** Instagram has no web text-share: use the native sheet, else copy caption + open IG. */

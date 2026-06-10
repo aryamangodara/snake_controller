@@ -9,8 +9,9 @@
   "background_color": "#0a0a0a",
   "theme_color": "#21808d",
   "icons": [
-    { "src": "snake-logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "snake-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "snake-logo-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "snake-logo-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "snake-logo.png", "sizes": "120x120", "type": "image/png", "purpose": "any" },
     { "src": "snake-favicon.png", "sizes": "32x32", "type": "image/png" }
   ]
 }

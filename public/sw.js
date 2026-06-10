@@ -5,7 +5,7 @@
 // cache is an OFFLINE FALLBACK only. All cross-origin traffic (Firebase, gstatic, unpkg, Font
 // Awesome) is left untouched so realtime sync keeps working. Bump CACHE when shell assets change.
 
-const CACHE = 'snake-shell-v7';
+const CACHE = 'snake-shell-v8';
 
 const SHELL_ASSETS = [
     './',
@@ -30,6 +30,8 @@ const SHELL_ASSETS = [
     './js/controller.js',
     './js/main.js',
     './snake-logo.png',
+    './snake-logo-192.png',
+    './snake-logo-512.png',
     './snake-favicon.png'
 ];
 
