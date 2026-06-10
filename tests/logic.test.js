@@ -204,11 +204,13 @@ describe('hitsSnake', () => {
         }
     });
 
-    it('uses a strict < threshold at 0.8 * snakeSegmentSize', () => {
+    it('hits inside the 0.8 * snakeSegmentSize radius and misses outside it', () => {
+        // A clear margin on each side — the exact boundary is FP-rounding territory
+        // (Math.hypot can differ from the threshold product by one ulp).
         const s = [{ x: 100, y: 100 }];
-        const exactly = { x: 100 + config.snakeSegmentSize * 0.8, y: 100 };
+        const justOutside = { x: 100 + config.snakeSegmentSize * 0.8 + 0.01, y: 100 };
         const justInside = { x: 100 + config.snakeSegmentSize * 0.8 - 0.01, y: 100 };
-        expect(hitsSnake(exactly, s, 0, config)).toBe(false);
+        expect(hitsSnake(justOutside, s, 0, config)).toBe(false);
         expect(hitsSnake(justInside, s, 0, config)).toBe(true);
     });
 });
