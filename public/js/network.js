@@ -75,9 +75,17 @@ async function setupRobustHybridSession(sessionCode) {
         const sessionDoc = firestore.collection('sessions').doc(sessionCode);
         
         debugLog('📝 Creating session document in Firestore...');
+        // v2 doc: multiplayer-capable from birth (zero toggles). The legacy
+        // gameState map stays — 1-player rounds run the classic solo engine
+        // and write through the untouched updateGameStateInFirebase.
         await sessionDoc.set({
             created: firebase.firestore.FieldValue.serverTimestamp(),
             connected: false,
+            mode: 'multi',
+            players: {},
+            gameActions: {},
+            feedback: {},
+            results: null,
             gameState: {
                 active: true,
                 score: 0,
@@ -86,6 +94,7 @@ async function setupRobustHybridSession(sessionCode) {
             lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
             version: Date.now() // Add version for debugging
         });
+        mpSession.enabled = true;
         
         debugLog('✅ Session document created successfully in Firestore');
         
@@ -113,10 +122,13 @@ async function setupRobustHybridSession(sessionCode) {
         // sessions clean themselves up server-side (backstop for beforeunload).
         sessionManager.realtimeRef.onDisconnect().remove();
         
-        // 4. Listen for Realtime Database changes
+        // 4. Listen for Realtime Database changes. The node carries either the
+        // legacy flat shape (an old cached phone) or per-slot children (new
+        // multiplayer phones) — both are handled so version skew degrades softly.
         sessionManager.realtimeRef.on('value', (snapshot) => {
             const controllerData = snapshot.val();
             if (controllerData && controllerData.connected) {
+                // Legacy flat shape: one phone driving the solo snake.
                 handleJoystickInputFromMobile(controllerData.joystick || { x: 0, y: 0 });
                 // Fire once per session — this listener re-runs on every joystick
                 // update (~30Hz), so anything not per-frame belongs in this guard.
@@ -126,9 +138,14 @@ async function setupRobustHybridSession(sessionCode) {
                     trackEvent('controller_connected', { side: 'desktop' });
                 }
             }
+            // Per-slot children: route each live phone's joystick to its player.
+            if (typeof mpHandleControllerNode === 'function') {
+                mpHandleControllerNode(controllerData);
+            }
         });
         
-        // 5. Listen to Firestore for game actions
+        // 5. Listen to Firestore for game actions (legacy single field for old
+        // phones) + the multiplayer roster/per-slot actions (mp-net.js).
         sessionManager.firestoreUnsubscribe = sessionDoc.onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
@@ -136,10 +153,13 @@ async function setupRobustHybridSession(sessionCode) {
                     debugLog('📱 Game action received:', data.gameAction);
                     handleGameActionFromMobile(data.gameAction);
                     // Clear action immediately
-                    sessionDoc.update({ 
+                    sessionDoc.update({
                         gameAction: null,
                         lastActivity: firebase.firestore.FieldValue.serverTimestamp()
                     }).catch(err => console.error('Error clearing game action:', err));
+                }
+                if (typeof mpHandleDocSnapshot === 'function') {
+                    mpHandleDocSnapshot(doc);
                 }
             }
         });

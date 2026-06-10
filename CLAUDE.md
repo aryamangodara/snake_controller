@@ -30,8 +30,9 @@ https://go-console-84748.web.app/
 order, all sharing one global scope:
 
 ```
-utils.js → logic.js → config.js → state.js → leaderboard.js → leaderboard-ui.js → sound.js →
-effects.js → network.js → game.js → share.js → controller.js → main.js
+utils.js → logic.js → config.js → state.js → players.js → leaderboard.js → leaderboard-ui.js →
+sound.js → effects.js → mp-engine.js → network.js → mp-net.js → game.js → share.js → mp-ui.js →
+controller.js → mp-client.js → main.js
 ```
 
 Functions and the large mutable state objects (`gameState`, `sessionManager`, `joystickState`,
@@ -83,11 +84,19 @@ reference + how to view: `.agent/system/analytics.md`.
 - `js/effects.js` — juice: particle bursts, ripples, score pops, screen shake (desktop render).
 - `js/network.js` — desktop session lifecycle, Firestore/RTDB wiring, QR generation, localStorage fallback.
 - `js/game.js` — desktop game loop: canvas rendering, movement, collision, and the combo lifecycle.
-- `js/share.js` — the phone game-over card + social share intents (WhatsApp / X / Facebook / Instagram).
+- `js/share.js` — the phone game-over card + social share intents (WhatsApp / X / Facebook /
+  Instagram); multiplayer rounds set a share context for defeat-aware captions.
 - `js/controller.js` — mobile joystick capture, connection, and game-over-card wiring.
 - `js/main.js` — entry point / device detection.
+- **Multiplayer (1–`gameConfig.maxPlayers` players, "last snake standing")** — modular, each file
+  ≤~250 lines: `js/players.js` (slots/colors/factories — `maxPlayers` is THE knob; rules already
+  accept p1–p6), `js/mp-engine.js` (the N-snake simulation; `gameState.mode === 'multi'`),
+  `js/mp-net.js` (desktop sync: roster, per-slot joystick/actions, results), `js/mp-client.js`
+  (phone: race-safe slot claim with rejoin token, own-slot haptics), `js/mp-ui.js` (lobby chips,
+  scoreboard, end screen, phone identity — all generated from `PLAYER_SLOTS`). 1-player rounds run
+  the CLASSIC solo engine incl. the leaderboard; ≥2 use the arena (no leaderboard).
 - `css/` — load order `variables.css` (tokens) → `base.css` → `desktop.css` / `mobile.css` →
-  `leaderboard.css`.
+  `leaderboard.css` → `multiplayer.css`.
 - `sw.js` + `manifest.json` — PWA: installable + offline shell. The SW is **network-first** for
   same-origin requests (cache = offline fallback only); bump `CACHE` when shell assets change.
 
