@@ -13,7 +13,18 @@
           "y": { ".validate": "newData.isNumber() && newData.val() >= -1.01 && newData.val() <= 1.01" },
           "$other": { ".validate": false }
         },
-        "$other": { ".validate": false }
+        "$slot": {
+          ".validate": "$slot.matches(/^p[1-6]$/)",
+          "connected": { ".validate": "newData.isBoolean()" },
+          "timestamp": { ".validate": "newData.isNumber()" },
+          "joystick": {
+            ".validate": "newData.hasChildren(['x', 'y'])",
+            "x": { ".validate": "newData.isNumber() && newData.val() >= -1.01 && newData.val() <= 1.01" },
+            "y": { ".validate": "newData.isNumber() && newData.val() >= -1.01 && newData.val() <= 1.01" },
+            "$other": { ".validate": false }
+          },
+          "$other": { ".validate": false }
+        }
       }
     }
   }
