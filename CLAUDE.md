@@ -108,12 +108,16 @@ reference + how to view: `.agent/system/analytics.md`.
   CI on every master push** — do not hand-edit rules in the Firebase console; the next push
   overwrites them. The security model is no-auth by design; accepted risks + mitigations are
   documented in `.agent/system/firebase_schema.md`.
-- Everything shares global scope — renaming a function or variable can silently break a consumer
-  in another file.
+- Everything shares global scope — renaming a function or variable can break a consumer in
+  another file. ESLint's `no-undef` is **on** (error) with every cross-file global declared in
+  `.eslintrc.json` `globals`: when you add/rename/remove a top-level function or `let`/`const`
+  in `public/js/*`, update that list or CI fails (that failure is the feature).
 - **ESLint `no-unused-vars` false positives** are expected for the cross-file globals declared in
   `config.js` (`app`, `database`, `firestore`, `analytics`, `firebaseReady`): they're consumed in
   *other* files, but ESLint lints each file alone. They're **warnings** (the lint command still
-  exits 0), and `no-undef` is already `off` for the consumer side — safe to ignore.
+  exits 0) — safe to ignore.
+- Production `console.log` is gated behind `debugLog()` / `DEBUG` in `utils.js` — use `debugLog`
+  for dev chatter; reserve `console.warn`/`console.error` (never gated) for real problems.
 - The PWA **service worker is network-first**, so online users always get fresh code — but an
   already-installed SW still needs one reload to update after a deploy. When you change shell
   assets, bump `const CACHE` in `sw.js`. (Local preview can serve stale assets; see

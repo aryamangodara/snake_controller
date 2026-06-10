@@ -6,7 +6,7 @@
  * Grabs the session from URL or prepares listeners
  */
 function initializeMobileController() {
-    console.log('📱 Initializing mobile controller...');
+    debugLog('📱 Initializing mobile controller...');
     
     // Check if session code is passed in URL query param
     const urlParams = new URLSearchParams(window.location.search);
@@ -283,7 +283,7 @@ function playLossFlash(card) {
 }
 
 function connectToSession(sessionCode) {
-    console.log('🔗 Attempting to connect to session:', sessionCode);
+    debugLog('🔗 Attempting to connect to session:', sessionCode);
     showConnectionStatus('Connecting...');
     
     sessionManager.connectionRetries = 0;
@@ -301,25 +301,25 @@ function attemptConnection(sessionCode) {
 
 async function connectViaRobustHybrid(sessionCode) {
     try {
-        console.log(`🔥 Attempting hybrid connection (attempt ${sessionManager.connectionRetries + 1}/${gameConfig.connectionRetries})...`);
+        debugLog(`🔥 Attempting hybrid connection (attempt ${sessionManager.connectionRetries + 1}/${gameConfig.connectionRetries})...`);
         showConnectionStatus(`Connecting to game... (${sessionManager.connectionRetries + 1}/${gameConfig.connectionRetries})`);
         
         await waitForFirebaseReady();
         
         // Find existing created session doc
         const sessionDoc = firestore.collection('sessions').doc(sessionCode);
-        console.log('📋 Checking if session exists in Firestore...');
+        debugLog('📋 Checking if session exists in Firestore...');
         
         const docSnapshot = await sessionDoc.get();
         if (docSnapshot.exists) {
             const sessionData = docSnapshot.data();
-            console.log('✅ Session found in Firestore:', sessionData);
+            debugLog('✅ Session found in Firestore:', sessionData);
             
             sessionManager.connectedSession = sessionCode;
             sessionManager.connectionType = 'hybrid';
             showControllerInterface();
             showConnectionSuccess();
-            console.log('✅ Successfully connected to hybrid session:', sessionCode);
+            debugLog('✅ Successfully connected to hybrid session:', sessionCode);
             trackEvent('controller_connected', { side: 'phone' });
             
             // Listen to Firestore for session server updates
@@ -344,7 +344,7 @@ async function connectViaRobustHybrid(sessionCode) {
                 connected: true,
                 lastActivity: firebase.firestore.FieldValue.serverTimestamp()
             });
-            console.log('✅ Updated connection status in Firestore');
+            debugLog('✅ Updated connection status in Firestore');
             
             sessionManager.realtimeRef = database.ref(`controllers/${sessionCode}`);
             await sessionManager.realtimeRef.set({
@@ -352,7 +352,7 @@ async function connectViaRobustHybrid(sessionCode) {
                 joystick: { x: 0, y: 0 },
                 timestamp: firebase.database.ServerValue.TIMESTAMP
             });
-            console.log('✅ Realtime Database connected for joystick input');
+            debugLog('✅ Realtime Database connected for joystick input');
             
             if (sessionData.gameState) {
                 updateCenterButtonIcon(sessionData.gameState.state);
@@ -360,7 +360,7 @@ async function connectViaRobustHybrid(sessionCode) {
             }
             
         } else {
-            console.log('❌ Session not found in Firestore');
+            debugLog('❌ Session not found in Firestore');
             throw new Error(`Session ${sessionCode} not found in Firestore. Make sure the game is running on desktop.`);
         }
         
@@ -369,12 +369,12 @@ async function connectViaRobustHybrid(sessionCode) {
         
         sessionManager.connectionRetries++;
         if (sessionManager.connectionRetries < gameConfig.connectionRetries) {
-            console.log(`🔄 Retrying connection in ${gameConfig.retryDelayMs/1000} seconds...`);
+            debugLog(`🔄 Retrying connection in ${gameConfig.retryDelayMs/1000} seconds...`);
             showConnectionError(`Connection failed. Retrying... (${sessionManager.connectionRetries}/${gameConfig.connectionRetries})`);
             
             setTimeout(() => attemptConnection(sessionCode), gameConfig.retryDelayMs);
         } else {
-            console.log('🔄 Max retries reached, falling back to localStorage...');
+            debugLog('🔄 Max retries reached, falling back to localStorage...');
             showConnectionError('Could not connect via Firebase. Trying local mode...');
             connectViaLocalStorage(sessionCode);
         }
@@ -393,7 +393,7 @@ function connectViaLocalStorage(sessionCode) {
         sessionManager.connectionType = 'localStorage';
         showControllerInterface();
         showConnectionSuccess('Connected via localStorage!');
-        console.log('✅ Connected via localStorage:', sessionCode);
+        debugLog('✅ Connected via localStorage:', sessionCode);
 
         const gameStateStr = localStorage.getItem(`session_${sessionCode}_state`);
         const gameStateData = safeParse(gameStateStr, { state: GameState.WAITING_FOR_START });
@@ -539,7 +539,7 @@ function sendJoystickInput(x, y) {
  */
 function sendGameAction(action) {
     if (!sessionManager.connectedSession) return;
-    console.log('📤 Sending game action:', action);
+    debugLog('📤 Sending game action:', action);
     
     if (sessionManager.connectionType === 'hybrid' && firestore) {
         const sessionDoc = firestore.collection('sessions').doc(sessionManager.connectedSession);

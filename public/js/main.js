@@ -22,7 +22,7 @@ function detectDevice() {
         }
     } catch (e) { /* ignore */ }
     
-    console.log('Device detected:', sessionManager.isDesktop ? 'Desktop' : 'Mobile');
+    debugLog('Device detected:', sessionManager.isDesktop ? 'Desktop' : 'Mobile');
     
     const desktopView = document.getElementById('desktop-view');
     const mobileView = document.getElementById('mobile-view');
@@ -51,7 +51,7 @@ function initializeApp() {
 // synchronously before DOMContentLoaded, and both session paths already cope with a
 // not-yet-ready Firebase (generateNewSession falls back, connectToSession retries).
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, initializing app...');
+    debugLog('DOM loaded, initializing app...');
     detectDevice();
     initializeApp();
 });

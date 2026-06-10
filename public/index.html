@@ -27,12 +27,17 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"></script>
     
-    <!-- QR Code generation -->
-    <script src="https://unpkg.com/qrious@4.0.2/dist/qrious.min.js"></script>
-    
-    <!-- Font Awesome for social icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
-    
+    <!-- QR Code generation (SRI-pinned; if the hash ever mismatches the script is
+         blocked and network.js renders the copyable join-link fallback instead) -->
+    <script src="https://unpkg.com/qrious@4.0.2/dist/qrious.min.js"
+            integrity="sha384-Dr98ddmUw2QkdCarNQ+OL7xLty7cSxgR0T7v1tq4UErS/qLV0132sBYTolRAFuOV"
+            crossorigin="anonymous"></script>
+
+    <!-- Font Awesome for social icons (SRI hash as published by cdnjs) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+          integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg=="
+          crossorigin="anonymous">
+
     <!-- Override CSS Media Queries -->
     <style>
         /* Force desktop and mobile views to be visible when JavaScript sets them */

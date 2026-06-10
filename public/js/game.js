@@ -6,7 +6,7 @@
  * Grabs the canvas, sets dimensions, generates a session, and loops.
  */
 function initializeDesktopGame() {
-    console.log('Initializing desktop game...');
+    debugLog('Initializing desktop game...');
     
     canvas = document.getElementById('game-canvas');
     if (!canvas) {
@@ -115,7 +115,7 @@ function applyKeyboardDirection() {
  * Bootstraps the animation frame calls
  */
 function startGameLoop() {
-    console.log('🎮 Starting game loop with constant movement...');
+    debugLog('🎮 Starting game loop with constant movement...');
     gameState.gameRunning = true;
     gameState.lastUpdateTime = performance.now();
     gameState.lastMoveTime = performance.now();
@@ -129,7 +129,7 @@ function startGameLoop() {
  * Used from the mobile start button to officially begin moving the snake 
  */
 function startGame() {
-    console.log('🚀 Starting game with continuous snake movement!');
+    debugLog('🚀 Starting game with continuous snake movement!');
     gameState.currentState = GameState.PLAYING;
     trackEvent('game_start', {});
     playStartSound();
@@ -157,7 +157,7 @@ function startGame() {
  * Resets variables and triggers another fresh game
  */
 function restartGame() {
-    console.log('🔄 Restarting game with continuous movement!');
+    debugLog('🔄 Restarting game with continuous movement!');
     trackEvent('game_restart', {});
     
     gameState = Object.assign(createInitialGameState(), {
@@ -260,14 +260,14 @@ function moveSnake() {
     
     // Wall collision detection
     if (hitsWall(head, gameConfig)) {
-        console.log('💥 Wall collision!');
+        debugLog('💥 Wall collision!');
         gameOver();
         return;
     }
 
     // Self collision detection
     if (hitsSelf(head, gameState.snake, gameConfig)) {
-        console.log('💥 Self collision!');
+        debugLog('💥 Self collision!');
         gameOver();
         return;
     }
@@ -366,7 +366,7 @@ function addSnakeSegment() {
         }
         
         gameState.snake.push(newSegment);
-        console.log('🐍 Snake grew! Length:', gameState.snake.length);
+        debugLog('🐍 Snake grew! Length:', gameState.snake.length);
     }
 }
 
@@ -558,7 +558,7 @@ function restartComboTimer() {
  * Triggers game over GUI modal
  */
 function gameOver() {
-    console.log('💀 Game over! Final score:', gameState.score, 'Snake length:', gameState.snake.length);
+    debugLog('💀 Game over! Final score:', gameState.score, 'Snake length:', gameState.snake.length);
     gameState.currentState = GameState.GAME_OVER;
     playCrashSound();
 
@@ -655,5 +655,5 @@ function showNameEntry(score) {
  * Used by desktop or network logger to show active status
  */
 function updateConnectionStatus(status) {
-    console.log('🔗 Connection status:', status);
+    debugLog('🔗 Connection status:', status);
 }

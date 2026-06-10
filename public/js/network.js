@@ -10,7 +10,7 @@ async function generateNewSession() {
     const sessionCode = await generateUniqueSessionCode();
     sessionManager.currentSession = sessionCode;
 
-    console.log('🎮 Generated session code:', sessionCode);
+    debugLog('🎮 Generated session code:', sessionCode);
 
     const sessionCodeElement = document.getElementById('session-code');
     if (sessionCodeElement) {
@@ -66,7 +66,7 @@ async function generateUniqueSessionCode(maxAttempts = 5) {
 async function setupRobustHybridSession(sessionCode) {
     try {
         sessionManager.connectionType = 'hybrid';
-        console.log('🔥 Setting up robust hybrid session...');
+        debugLog('🔥 Setting up robust hybrid session...');
         
         // Wait for Firestore to be ready
         await waitForFirebaseReady();
@@ -74,7 +74,7 @@ async function setupRobustHybridSession(sessionCode) {
         // 1. Create session in Firestore with detailed logging
         const sessionDoc = firestore.collection('sessions').doc(sessionCode);
         
-        console.log('📝 Creating session document in Firestore...');
+        debugLog('📝 Creating session document in Firestore...');
         await sessionDoc.set({
             created: firebase.firestore.FieldValue.serverTimestamp(),
             connected: false,
@@ -87,18 +87,18 @@ async function setupRobustHybridSession(sessionCode) {
             version: Date.now() // Add version for debugging
         });
         
-        console.log('✅ Session document created successfully in Firestore');
+        debugLog('✅ Session document created successfully in Firestore');
         
         // 2. Verify session was created by reading it back
         const verification = await sessionDoc.get();
         if (!verification.exists) {
             throw new Error('Session verification failed - document not found after creation');
         }
-        console.log('✅ Session verified in Firestore:', verification.data());
+        debugLog('✅ Session verified in Firestore:', verification.data());
         
         // 3. Set up Realtime Database path
         sessionManager.realtimeRef = database.ref(`controllers/${sessionCode}`);
-        console.log('📡 Setting up Realtime Database path...');
+        debugLog('📡 Setting up Realtime Database path...');
         
         // Initialize Realtime Database path
         await sessionManager.realtimeRef.set({
@@ -107,7 +107,7 @@ async function setupRobustHybridSession(sessionCode) {
             timestamp: firebase.database.ServerValue.TIMESTAMP,
             initialized: true
         });
-        console.log('✅ Realtime Database path initialized');
+        debugLog('✅ Realtime Database path initialized');
 
         // Auto-remove this controller node if the host disconnects, so abandoned
         // sessions clean themselves up server-side (backstop for beforeunload).
@@ -118,10 +118,11 @@ async function setupRobustHybridSession(sessionCode) {
             const controllerData = snapshot.val();
             if (controllerData && controllerData.connected) {
                 handleJoystickInputFromMobile(controllerData.joystick || { x: 0, y: 0 });
-                updateConnectionStatus('Mobile controller connected ✅');
-                // Fire once per session — this listener re-runs on every joystick update.
+                // Fire once per session — this listener re-runs on every joystick
+                // update (~30Hz), so anything not per-frame belongs in this guard.
                 if (!sessionManager.controllerTracked) {
                     sessionManager.controllerTracked = true;
+                    updateConnectionStatus('Mobile controller connected ✅');
                     trackEvent('controller_connected', { side: 'desktop' });
                 }
             }
@@ -132,7 +133,7 @@ async function setupRobustHybridSession(sessionCode) {
             if (doc.exists) {
                 const data = doc.data();
                 if (data.gameAction) {
-                    console.log('📱 Game action received:', data.gameAction);
+                    debugLog('📱 Game action received:', data.gameAction);
                     handleGameActionFromMobile(data.gameAction);
                     // Clear action immediately
                     sessionDoc.update({ 
@@ -145,12 +146,12 @@ async function setupRobustHybridSession(sessionCode) {
         
         sessionManager.firebaseConnected = true;
         sessionManager.sessionReady = true;
-        console.log('🚀 Hybrid session fully ready! Mobile can now connect.');
+        debugLog('🚀 Hybrid session fully ready! Mobile can now connect.');
         updateConnectionStatus('Waiting for mobile controller...');
         
     } catch (error) {
         console.error('❌ Hybrid session setup failed:', error);
-        console.log('🔄 Falling back to localStorage...');
+        debugLog('🔄 Falling back to localStorage...');
         setupLocalStorageSession(sessionCode);
     }
 }
@@ -185,7 +186,7 @@ function waitForFirebaseReady() {
  * LocalStorage polling backup method if Firebase fails.
  */
 function setupLocalStorageSession(sessionCode) {
-    console.log('📱 Using localStorage fallback for session:', sessionCode);
+    debugLog('📱 Using localStorage fallback for session:', sessionCode);
     sessionManager.connectionType = 'localStorage';
     
     localStorage.setItem('currentSession', sessionCode);
@@ -320,7 +321,7 @@ function handleJoystickInputFromMobile(joystickInput) {
  * Process remote actions (start/restart) sent from the mobile connected device
  */
 function handleGameActionFromMobile(action) {
-    console.log('🎮 Handling game action:', action);
+    debugLog('🎮 Handling game action:', action);
     
     if (action === 'start' && gameState.currentState === GameState.WAITING_FOR_START) {
         startGame();
@@ -342,7 +343,7 @@ async function updateGameStateInFirebase() {
                 'gameState.score': gameState.score,
                 lastActivity: firebase.firestore.FieldValue.serverTimestamp()
             });
-            console.log('📊 Game state updated in Firestore');
+            debugLog('📊 Game state updated in Firestore');
         } catch (error) {
             console.error('Error updating game state:', error);
         }

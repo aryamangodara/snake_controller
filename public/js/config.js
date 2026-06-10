@@ -44,10 +44,10 @@ function initializeFirebase() {
         } catch (e) {
             console.warn('Analytics unavailable:', e);
         }
-        console.log('🚀 Firebase initialized: Realtime DB + Firestore hybrid');
+        debugLog('🚀 Firebase initialized: Realtime DB + Firestore hybrid');
     } catch (error) {
         console.warn('Firebase initialization failed:', error);
-        console.log('Running in offline mode with localStorage');
+        debugLog('Running in offline mode with localStorage');
     }
 }
 
