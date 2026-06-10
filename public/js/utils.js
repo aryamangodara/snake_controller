@@ -68,3 +68,11 @@ function sanitizeName(raw) {
     if (clean.length < 1) return null;
     return clean.slice(0, 16);
 }
+
+// Expose the pure helpers to Vitest (same pattern as logic.js); a no-op in the browser.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        safeParse,
+        sanitizeName
+    };
+}

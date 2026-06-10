@@ -16,6 +16,8 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase with HYBRID approach: Realtime Database + Firestore
+// (assigned here, consumed by the other scripts in the shared global scope)
+/* exported app, database, firestore, analytics, firebaseReady */
 let app, database, firestore, analytics;
 let firebaseReady = false;
 

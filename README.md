@@ -33,6 +33,8 @@ Scan a QR code and your phone becomes a wireless, analog joystick.
 - 🔥 **Combo streaks** — chain quick eats for a score multiplier, shown as a draining yellow timer badge.
 - 🎆 **Juice** — particle bursts, ripples, floating score pops, and screen shake on impact.
 - 🔊 **Synthesized sound** — Web Audio SFX whose pitch climbs with your combo; one-tap mute.
+- 🏆 **Global leaderboard** — pick a handle and compete worldwide; see "You ranked #N globally" after every run.
+- 📳 **Haptics + loss flash** — the phone buzzes on loss (Android; best-effort iOS) with an on-screen shake where it can't.
 - 🤳 **Flex your score** — share to WhatsApp, X, Facebook, or Instagram straight from your phone.
 - ⚡ **Offline-ready PWA** — installable, with a network-first service worker.
 - 🛟 **Single-device fallback** — a `localStorage` mode kicks in automatically when Firebase isn't available.
@@ -48,6 +50,7 @@ Scan a QR code and your phone becomes a wireless, analog joystick.
 | ▶ **Center button** | Start the game (turns into 🐍 while playing) |
 | ⌨️ **Space / Enter** *(desktop)* | Restart after a crash |
 | 🔁 **Play Again** *(phone)* | Restart from the game-over share card |
+| 🏆 **Trophy button** *(desktop)* | View the global Top-10 leaderboard |
 
 ---
 
