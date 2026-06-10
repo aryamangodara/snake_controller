@@ -146,17 +146,22 @@ async function fetchTopScores(n = 10) {
     }
 }
 
+// Past this rank we stop counting: the query is capped so a game-over costs at most
+// LB_RANK_CAP + 1 document reads instead of one per player ranked above you.
+const LB_RANK_CAP = 100;
+
 /**
- * Global rank for a score = (rows strictly above it) + 1. One read; reuses the single
- * `score` index.
+ * Global rank for a score = (rows strictly above it) + 1, capped at LB_RANK_CAP.
+ * One read; reuses the single `score` index.
  * @param {number} score
- * @returns {Promise<number|null>}
+ * @returns {Promise<number|null>} The rank, LB_RANK_CAP + 1 meaning "below the
+ *   top LB_RANK_CAP" (callers should render that as "Top 100+"), or null on failure.
  */
 async function getPlayerRank(score) {
     try {
         if (typeof firestore === 'undefined' || !firebaseReady || !firestore) return null;
         const snap = await firestore.collection(LB_COLLECTION)
-            .where('score', '>', score).get();
+            .where('score', '>', score).limit(LB_RANK_CAP + 1).get();
         return snap.size + 1;
     } catch (error) {
         console.warn('getPlayerRank failed:', error);

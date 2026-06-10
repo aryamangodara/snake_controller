@@ -205,14 +205,17 @@ function moveJoystickToPosition(e) {
 // CONTROLLER EVENT HELPERS
 // ==========================================
 
+// Last game state synced from the desktop host — drives what the center button
+// DOES; the icon glyph is derived display only (see updateCenterButtonIcon).
+let syncedGameState = null;
+
 function handleCenterButtonPress() {
     const centerBtn = document.getElementById('btn-center');
     if (!centerBtn || centerBtn.disabled) return;
 
-    const currentIcon = centerBtn.querySelector('.center-icon').textContent;
-    if (currentIcon === '▶') {
+    if (syncedGameState === GameState.WAITING_FOR_START) {
         sendGameAction('start');
-    } else if (currentIcon === '↻') {
+    } else if (syncedGameState === GameState.GAME_OVER) {
         sendGameAction('restart');
     }
 }
@@ -378,21 +381,27 @@ async function connectViaRobustHybrid(sessionCode) {
     }
 }
 
+// True once the localStorage-mode 'storage' listener is attached, so repeated
+// Connect taps (e.g. after a failed Firebase attempt) don't stack duplicate handlers.
+let storageListenerAttached = false;
+
 function connectViaLocalStorage(sessionCode) {
     const currentSession = localStorage.getItem('currentSession');
-    
+
     if (currentSession === sessionCode) {
         sessionManager.connectedSession = sessionCode;
         sessionManager.connectionType = 'localStorage';
         showControllerInterface();
         showConnectionSuccess('Connected via localStorage!');
         console.log('✅ Connected via localStorage:', sessionCode);
-        
+
         const gameStateStr = localStorage.getItem(`session_${sessionCode}_state`);
         const gameStateData = safeParse(gameStateStr, { state: GameState.WAITING_FOR_START });
         updateCenterButtonIcon(gameStateData.state);
         updateMobileGameOver(gameStateData);
 
+        if (storageListenerAttached) return;
+        storageListenerAttached = true;
         window.addEventListener('storage', function(e) {
             if (e.key === `session_${sessionCode}_state`) {
                 const data = safeParse(e.newValue, {});
@@ -446,9 +455,11 @@ function showConnectionStatus(message) {
 }
 
 function updateCenterButtonIcon(currentState) {
+    syncedGameState = currentState;
+
     const centerBtn = document.getElementById('btn-center');
     if (!centerBtn) return;
-    
+
     const btnIcon = centerBtn.querySelector('.center-icon');
     centerBtn.classList.remove('ready', 'playing', 'restart');
     
