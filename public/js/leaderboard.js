@@ -1,8 +1,8 @@
 // ==========================================
 // LOCAL LEADERBOARD / HIGH SCORES
 // ==========================================
-// Persists the top scores in localStorage (per-browser). Could later be promoted
-// to a Firestore `scores` collection governed by the rules in firestore.rules.
+// Persists the device's top scores in localStorage (per-browser). The GLOBAL
+// Firestore leaderboard lives further down in this file (see "GLOBAL LEADERBOARD").
 
 const HIGH_SCORES_KEY = 'snake_highscores';
 const MAX_HIGH_SCORES = 5;

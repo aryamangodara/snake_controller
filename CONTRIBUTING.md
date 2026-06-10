@@ -247,7 +247,7 @@ We welcome contributions in these areas:
 - **Analytics**: Game statistics, user behavior tracking
 
 ### Mobile Enhancements
-- **Haptic Feedback**: Vibration on collisions and food collection
+- **Haptic Feedback**: *(implemented — `triggerHaptic` in `controller.js`)* expand the patterns beyond loss/food, e.g. combo milestones
 - **Gestures**: Swipe controls as alternative to joystick
 - **Multi-touch**: Support for multiple players on one device
 - **Responsive UI**: Better adaptation to different screen sizes

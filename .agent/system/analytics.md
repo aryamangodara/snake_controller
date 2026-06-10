@@ -41,6 +41,8 @@ acquisition (referrer + `utm_*`). On top of that we fire custom events:
 | `post_score` | `score` (number) | `game.js` `gameOver()` — GA4 recommended event |
 | `share` | `method` (platform), `content_type` (`score`) | `share.js` `openShare()` |
 | `mute_toggle` | `muted` (bool) | `sound.js` `toggleMute()` |
+| `leaderboard_view` | — | `leaderboard-ui.js` `openLeaderboard()` |
+| `leaderboard_submit` | `score` (number), `rank` (number; 0 = rank unknown) | `game.js` `submitAndShowRank()` |
 | `pwa_install` | `outcome` (`prompted`\|`installed`) | `index.html` install listeners |
 
 Every event also carries `device_role` (`desktop_host` / `phone_controller`).
