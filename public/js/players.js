@@ -34,7 +34,11 @@ const PLAYER_SLOTS = Array.from(
  * @returns {object}
  */
 function createPlayer(slot, name, playerCount) {
-    const pose = spawnPose(PLAYER_SLOTS.indexOf(slot), playerCount, gameConfig);
+    // Index from the slot id itself ('p3' -> 2), not PLAYER_SLOTS.indexOf — so a
+    // roster larger than the current maxPlayers (e.g. a 6-player simulation, or a
+    // later cap raise mid-session) still spawns correctly.
+    const slotIndex = parseInt(slot.slice(1), 10) - 1;
+    const pose = spawnPose(slotIndex, playerCount, gameConfig);
     return {
         slot: slot,
         name: name || 'Player ' + slot.slice(1),

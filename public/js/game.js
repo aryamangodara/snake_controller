@@ -69,12 +69,21 @@ function setupKeyboardControls() {
 
         if (key === ' ' || key === 'enter') {
             e.preventDefault();
+            // In multiplayer the round lifecycle is roster-driven; the sync layer
+            // (mp-net.js) owns start/restart from the shared screen too.
+            if (gameState.mode === 'multi' || (typeof mpDesktopWantsRound === 'function' && mpDesktopWantsRound())) {
+                if (typeof mpHandleDesktopStartKey === 'function') mpHandleDesktopStartKey();
+                return;
+            }
             if (gameState.currentState === GameState.WAITING_FOR_START) startGame();
             else if (gameState.currentState === GameState.GAME_OVER) restartGame();
             return;
         }
 
         if (KEY_VECTORS[key]) {
+            // Steering keys are solo-only — the desktop is the shared screen in
+            // multiplayer, not a player.
+            if (gameState.mode === 'multi') return;
             e.preventDefault();
             activeDirectionKeys.add(key);
             applyKeyboardDirection();
@@ -102,6 +111,7 @@ function setupKeyboardControls() {
  * same joystick mapping so keyboard and phone control feel identical.
  */
 function applyKeyboardDirection() {
+    if (gameState.mode === 'multi') return; // keyboard steering is solo-only
     let x = 0, y = 0;
     for (const key of activeDirectionKeys) {
         x += KEY_VECTORS[key].x;
@@ -198,21 +208,26 @@ function updateGame(currentTime) {
     const moveDeltaTime = currentTime - gameState.lastMoveTime;
     
     if (gameState.currentState === GameState.PLAYING) {
-        // Always update direction smoothly (frame-rate-independent; needs elapsed time)
-        updateSnakeDirection(deltaTime);
-        
-        // CONSTANT MOVEMENT: Snake moves every frame regardless of joystick input
-        if (moveDeltaTime >= gameConfig.movementUpdateMs) {
-            moveSnake();
-            gameState.lastMoveTime = currentTime;
-        }
+        if (gameState.mode === 'multi') {
+            // The N-snake simulation lives in mp-engine.js; solo below is untouched.
+            updateMultiplayerFrame(currentTime, deltaTime, moveDeltaTime);
+        } else {
+            // Always update direction smoothly (frame-rate-independent; needs elapsed time)
+            updateSnakeDirection(deltaTime);
 
-        gameState.frameCount++;
+            // CONSTANT MOVEMENT: Snake moves every frame regardless of joystick input
+            if (moveDeltaTime >= gameConfig.movementUpdateMs) {
+                moveSnake();
+                gameState.lastMoveTime = currentTime;
+            }
 
-        // Expire a stale combo so the badge clears if you dawdle between bites.
-        if (gameState.combo > 0 && Date.now() - gameState.lastFoodTime > gameConfig.comboWindowMs) {
-            gameState.combo = 0;
-            updateComboDisplay();
+            gameState.frameCount++;
+
+            // Expire a stale combo so the badge clears if you dawdle between bites.
+            if (gameState.combo > 0 && Date.now() - gameState.lastFoodTime > gameConfig.comboWindowMs) {
+                gameState.combo = 0;
+                updateComboDisplay();
+            }
         }
     }
     
@@ -337,34 +352,101 @@ function addSnakeSegment() {
 }
 
 /**
- * Spawns food randomly, avoiding snake body proximity
+ * Spawns food randomly, avoiding snake body proximity.
+ * @param {Array<Array<{x:number,y:number}>>} [snakes] - bodies to avoid;
+ *   defaults to the solo snake. Multiplayer passes every alive snake.
  */
-function generateFood() {
+function generateFood(snakes) {
+    const bodies = snakes || [gameState.snake];
     let attempts = 0;
     const maxAttempts = 30;
     const margin = gameConfig.wallMargin + gameConfig.foodSize;
-    
+
     do {
         gameState.food = {
             x: Math.random() * (gameConfig.boardSize.width - margin * 2) + margin,
             y: Math.random() * (gameConfig.boardSize.height - margin * 2) + margin
         };
         attempts++;
-        
+
         let tooClose = false;
-        for (let segment of gameState.snake) {
-            const distance = Math.sqrt(
-                Math.pow(gameState.food.x - segment.x, 2) + Math.pow(gameState.food.y - segment.y, 2)
-            );
-            if (distance < gameConfig.segmentSpacing * 2) {
-                tooClose = true;
-                break;
+        for (const body of bodies) {
+            for (const segment of body) {
+                const distance = Math.sqrt(
+                    Math.pow(gameState.food.x - segment.x, 2) + Math.pow(gameState.food.y - segment.y, 2)
+                );
+                if (distance < gameConfig.segmentSpacing * 2) {
+                    tooClose = true;
+                    break;
+                }
             }
+            if (tooClose) break;
         }
-        
+
         if (!tooClose) break;
-        
+
     } while (attempts < maxAttempts);
+}
+
+/**
+ * Draw one snake: glowing body, brighter glowing head, white direction arrow
+ * (arrow only while PLAYING). Extracted verbatim from the old inline solo
+ * drawing so solo and multiplayer render through the same code path.
+ * @param {Array<{x:number,y:number}>} snake
+ * @param {number} direction - heading in radians (arrow rotation).
+ * @param {number} currentSpeed
+ * @param {number} baseSpeed - ramped base (head glow + arrow scale reference).
+ * @param {{body:string, head:string}} colorPair
+ */
+function drawSnake(snake, direction, currentSpeed, baseSpeed, colorPair) {
+    // Body segments
+    ctx.shadowColor = colorPair.body;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = colorPair.body;
+
+    for (let i = 1; i < snake.length; i++) {
+        const segment = snake[i];
+        ctx.beginPath();
+        ctx.arc(segment.x, segment.y, gameConfig.snakeSegmentSize / 2, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+
+    ctx.shadowBlur = 0;
+
+    // Head with direction indicator
+    if (snake.length > 0) {
+        const head = snake[0];
+
+        // Head circle with pulsing effect based on speed
+        ctx.shadowColor = colorPair.head;
+        ctx.shadowBlur = 12 + (currentSpeed - baseSpeed) * 3;
+        ctx.fillStyle = colorPair.head;
+        ctx.beginPath();
+        ctx.arc(head.x, head.y, gameConfig.snakeSegmentSize / 2, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // Always show direction arrow since snake is always moving
+        if (gameState.currentState === GameState.PLAYING) {
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#ffffff';
+            ctx.save();
+            ctx.translate(head.x, head.y);
+            ctx.rotate(direction);
+
+            // Arrow size based on speed
+            const arrowSize = (gameConfig.snakeSegmentSize / 3) * (1 + (currentSpeed - baseSpeed) / gameConfig.maxSpeedBoost * 0.3);
+            ctx.beginPath();
+            ctx.moveTo(arrowSize, 0);
+            ctx.lineTo(-arrowSize / 2, -arrowSize / 2);
+            ctx.lineTo(-arrowSize / 2, arrowSize / 2);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        ctx.shadowBlur = 0;
+    }
 }
 
 /**
@@ -393,55 +475,16 @@ function renderGame() {
                       gameConfig.boardSize.height - gameConfig.wallMargin * 2);
     }
     
-    // Draw snake body segments
-    ctx.shadowColor = colors.snake;
-    ctx.shadowBlur = 8;
-    ctx.fillStyle = colors.snake;
-    
-    for (let i = 1; i < gameState.snake.length; i++) {
-        const segment = gameState.snake[i];
-        ctx.beginPath();
-        ctx.arc(segment.x, segment.y, gameConfig.snakeSegmentSize / 2, 0, 2 * Math.PI);
-        ctx.fill();
-    }
-    
-    ctx.shadowBlur = 0;
-    
-    // Draw snake head with direction indicator
-    if (gameState.snake.length > 0) {
-        const head = gameState.snake[0];
-        
-        // Head circle with pulsing effect based on speed
-        ctx.shadowColor = colors.snakeHead;
-        ctx.shadowBlur = 12 + (gameState.currentSpeed - gameState.baseSpeed) * 3;
-        ctx.fillStyle = colors.snakeHead;
-        ctx.beginPath();
-        ctx.arc(head.x, head.y, gameConfig.snakeSegmentSize / 2, 0, 2 * Math.PI);
-        ctx.fill();
-        
-        // Always show direction arrow since snake is always moving
-        if (gameState.currentState === GameState.PLAYING) {
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = '#ffffff';
-            ctx.save();
-            ctx.translate(head.x, head.y);
-            ctx.rotate(gameState.direction);
-            
-            // Arrow size based on speed
-            const arrowSize = (gameConfig.snakeSegmentSize / 3) * (1 + (gameState.currentSpeed - gameState.baseSpeed) / gameConfig.maxSpeedBoost * 0.3);
-            ctx.beginPath();
-            ctx.moveTo(arrowSize, 0);
-            ctx.lineTo(-arrowSize / 2, -arrowSize / 2);
-            ctx.lineTo(-arrowSize / 2, arrowSize / 2);
-            ctx.closePath();
-            ctx.fill();
-            
-            ctx.restore();
+    // Draw the snake(s): one in solo, every alive player in multiplayer.
+    if (gameState.mode === 'multi') {
+        for (const p of gameState.players) {
+            if (p.alive) drawSnake(p.snake, p.direction, p.currentSpeed, p.baseSpeed, p.colors);
         }
-        
-        ctx.shadowBlur = 0;
+    } else {
+        drawSnake(gameState.snake, gameState.direction, gameState.currentSpeed,
+            gameState.baseSpeed, { body: colors.snake, head: colors.snakeHead });
     }
-    
+
     // Draw food with pulsing effect
     ctx.shadowColor = colors.food;
     ctx.shadowBlur = 15;
@@ -468,9 +511,17 @@ function renderGame() {
         ctx.shadowColor = '#22d3c5';
         ctx.shadowBlur = 10;
 
-        ctx.fillText('📱 Scan the QR with your phone to play', W / 2, H / 2 - 20);
-        ctx.fillText('Tap play to start - the snake never stops!', W / 2, H / 2 + 20);
-        
+        // The multiplayer lobby supplies phase-aware lines (mp-ui.js); solo
+        // keeps the classic prompt verbatim.
+        let line1 = '📱 Scan the QR with your phone to play';
+        let line2 = 'Tap play to start - the snake never stops!';
+        if (typeof getLobbyOverlayLines === 'function') {
+            const lines = getLobbyOverlayLines();
+            if (lines) { line1 = lines[0]; line2 = lines[1]; }
+        }
+        ctx.fillText(line1, W / 2, H / 2 - 20);
+        ctx.fillText(line2, W / 2, H / 2 + 20);
+
         ctx.shadowBlur = 0;
     }
 
