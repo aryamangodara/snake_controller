@@ -3,11 +3,15 @@
 // ==========================================
 
 /**
- * Validates the resolution layout to decide rendering logic
+ * Decides the device role ONCE for the whole app: a narrow viewport or a
+ * `?session=` URL param (arriving via QR scan) means this device is the
+ * controller. Everything else — including the inline reveal script in
+ * index.html — must READ sessionManager.isDesktop, never recompute it.
  */
 function detectDevice() {
-    const isMobile = window.innerWidth <= 768;
-    sessionManager.isDesktop = !isMobile;
+    const isController = window.innerWidth <= 768 ||
+        new URLSearchParams(window.location.search).has('session');
+    sessionManager.isDesktop = !isController;
 
     // Tag the GA4 session with the device role so the two audiences are segmentable.
     try {
@@ -43,9 +47,11 @@ function initializeApp() {
     }
 }
 
-// Initialize the application
+// Initialize the application. No artificial delay: Firebase init in config.js runs
+// synchronously before DOMContentLoaded, and both session paths already cope with a
+// not-yet-ready Firebase (generateNewSession falls back, connectToSession retries).
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing app...');
     detectDevice();
-    setTimeout(initializeApp, 1000);
+    initializeApp();
 });
