@@ -70,9 +70,11 @@ function setupKeyboardControls() {
         if (key === ' ' || key === 'enter') {
             e.preventDefault();
             // In multiplayer the round lifecycle is roster-driven; the sync layer
-            // (mp-net.js) owns start/restart from the shared screen too.
-            if (gameState.mode === 'multi' || (typeof mpDesktopWantsRound === 'function' && mpDesktopWantsRound())) {
-                if (typeof mpHandleDesktopStartKey === 'function') mpHandleDesktopStartKey();
+            // (mp-net.js, a later module) owns start/restart from the shared screen
+            // too — window lookups, same hook pattern as mpUiHook in mp-engine.js.
+            if (gameState.mode === 'multi' ||
+                (typeof window.mpDesktopWantsRound === 'function' && window.mpDesktopWantsRound())) {
+                if (typeof window.mpHandleDesktopStartKey === 'function') window.mpHandleDesktopStartKey();
                 return;
             }
             if (gameState.currentState === GameState.WAITING_FOR_START) startGame();
@@ -515,8 +517,8 @@ function renderGame() {
         // keeps the classic prompt verbatim.
         let line1 = '📱 Scan the QR with your phone to play';
         let line2 = 'Tap play to start - the snake never stops!';
-        if (typeof getLobbyOverlayLines === 'function') {
-            const lines = getLobbyOverlayLines();
+        if (typeof window.getLobbyOverlayLines === 'function') {
+            const lines = window.getLobbyOverlayLines();
             if (lines) { line1 = lines[0]; line2 = lines[1]; }
         }
         ctx.fillText(line1, W / 2, H / 2 - 20);
