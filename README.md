@@ -30,6 +30,7 @@ Scan a QR code and your phone becomes a wireless, analog joystick.
 
 - 📱 **Phone-as-controller** — a custom touch joystick streamed to the desktop in near real-time over Firebase.
 - 🎯 **Analog, continuous-angle movement** — steer by angle; magnitude controls speed. No grid-snapping.
+- ⚔️ **2–3 player versus** — friends scan the *same* QR to join; one shared fruit, distinct snake colors, bite a rival and *you* die — **last snake standing wins** ("I defeated…" bragging cards included).
 - 🔥 **Combo streaks** — chain quick eats for a score multiplier, shown as a draining yellow timer badge.
 - 🎆 **Juice** — particle bursts, ripples, floating score pops, and screen shake on impact.
 - 🔊 **Synthesized sound** — Web Audio SFX whose pitch climbs with your combo; one-tap mute.

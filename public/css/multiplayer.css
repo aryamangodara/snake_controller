@@ -1,0 +1,187 @@
+/* ==========================================
+   MULTIPLAYER — lobby, scoreboard, end screen, phone identity
+   ==========================================
+   Every rule keys off an .mp/.mp-* class or a --slot/--player CSS variable set
+   by mp-ui.js; solo never adds them, so the classic UI is untouched. Variables
+   fall back to today's teal so an unset value renders the current look. */
+
+/* ---------- Desktop lobby roster (inside .connection-card) ---------- */
+.mp-roster { margin: var(--space-12) 0 var(--space-4); text-align: left; }
+.mp-roster-header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: var(--space-6);
+}
+.mp-roster-title {
+    color: var(--color-warning); font-size: var(--font-size-xs);
+    text-transform: uppercase; letter-spacing: 0.12em; font-weight: var(--font-weight-bold);
+}
+.mp-roster-count {
+    font-family: 'Orbitron', var(--font-family-base);
+    color: var(--color-primary); font-size: var(--font-size-sm); font-weight: var(--font-weight-bold);
+}
+.mp-roster-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: var(--space-4);
+}
+.mp-chip {
+    display: flex; align-items: center; gap: var(--space-8);
+    padding: var(--space-4) var(--space-10);
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(var(--slot-rgb, var(--color-teal-500-rgb)), 0.45);
+    background: rgba(var(--slot-rgb, var(--color-teal-500-rgb)), 0.10);
+    font-size: var(--font-size-sm); color: var(--color-text);
+}
+.mp-chip-dot {
+    width: 10px; height: 10px; border-radius: var(--radius-full); flex: 0 0 auto;
+    background: var(--slot-color, var(--color-primary));
+    box-shadow: 0 0 8px rgba(var(--slot-rgb, var(--color-teal-500-rgb)), 0.8);
+}
+.mp-chip-slot {
+    font-family: 'Orbitron', var(--font-family-base);
+    font-size: var(--font-size-xs); font-weight: var(--font-weight-bold);
+    color: var(--slot-color, var(--color-primary));
+}
+.mp-chip-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-chip-ready { color: var(--color-success); font-weight: var(--font-weight-bold); }
+.mp-chip--ghost { opacity: 0.45; border-style: dashed; }
+.mp-chip--ghost .mp-chip-name { color: var(--color-text-secondary); font-style: italic; }
+.mp-chip--joined { animation: chipPop 260ms var(--ease-standard); }
+@keyframes chipPop {
+    0% { transform: scale(0.85); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+.mp-start-hint {
+    color: var(--color-text-secondary); font-size: var(--font-size-xs);
+    margin: var(--space-8) 0 0; text-align: center;
+}
+.connection-card.mp-full .qr-container,
+.connection-card.mp-full .camera-cue { opacity: 0.35; filter: grayscale(0.8); }
+.sr-only {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ---------- Desktop in-round scoreboard (.score-card gains .mp) ---------- */
+.score-card.mp { display: block; padding: var(--space-16); }
+.score-card.mp .current-score { display: none; }
+.mp-scoreboard {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: var(--space-8); text-align: left;
+}
+.score-card:not(.mp) .mp-scoreboard { display: none; }
+.mp-score-row {
+    display: grid; grid-template-columns: auto 1fr auto auto;
+    align-items: center; gap: var(--space-10);
+    padding: var(--space-8) var(--space-12);
+    border-left: 4px solid var(--slot-color, var(--color-primary));
+    border-radius: var(--radius-base);
+    background: rgba(var(--slot-rgb, var(--color-teal-500-rgb)), 0.12);
+    transition: opacity var(--duration-normal) var(--ease-standard);
+}
+.mp-row-dot {
+    width: 22px; height: 22px; border-radius: var(--radius-full); flex: 0 0 auto;
+    background: var(--slot-color, var(--color-primary));
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.mp-row-slot {
+    font-family: 'Orbitron', var(--font-family-base); font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.mp-row-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-weight: var(--font-weight-medium); color: var(--color-text);
+}
+.mp-row-score {
+    font-family: 'Orbitron', var(--font-family-base);
+    color: var(--slot-color, var(--color-primary)); font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-xl); min-width: 3ch; text-align: right;
+}
+.mp-score-row--dead { opacity: 0.5; }
+.mp-score-row--dead .mp-row-score { color: var(--color-text-secondary); }
+
+/* ---------- Desktop end screen (#game-over gains .mp) ---------- */
+#game-over.mp .game-over-content:not(.mp-go-content) { display: none; }
+.mp-go-content { min-width: 380px; }
+#mp-winner-title {
+    font-family: 'Orbitron', var(--font-family-base);
+    font-size: var(--font-size-3xl); margin-bottom: var(--space-16);
+    text-shadow: 0 0 16px rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.7);
+}
+.mp-standings { list-style: none; margin: 0 0 var(--space-12); padding: 0; text-align: left; }
+.mp-standing-row {
+    display: grid; grid-template-columns: 3rem auto 1fr auto;
+    gap: var(--space-12); align-items: center;
+    padding: var(--space-10) var(--space-12);
+    border-bottom: 1px solid rgba(var(--slot-rgb, var(--color-teal-500-rgb)), 0.25);
+}
+.mp-standing-place {
+    font-family: 'Orbitron', var(--font-family-base);
+    color: var(--color-warning); font-weight: var(--font-weight-bold);
+}
+.mp-standing-who { display: flex; flex-direction: column; min-width: 0; }
+.mp-standing-cause { color: var(--color-text-secondary); font-size: var(--font-size-xs); }
+
+/* ---------- Phone identity + queue states ---------- */
+.controller-interface.mp .joystick-base {
+    border-color: rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.5);
+}
+.controller-interface.mp .joystick-handle {
+    background: linear-gradient(145deg, var(--player-color, var(--color-primary)),
+        rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.75));
+}
+.controller-interface.mp .center-btn {
+    border-color: rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.5);
+}
+.controller-interface.mp-queued .joystick-area { opacity: 0.35; pointer-events: none; }
+.controller-interface.mp-queued .center-btn { opacity: 0.35; }
+
+.mp-player-banner {
+    display: flex; align-items: center; gap: var(--space-8);
+    margin: var(--space-12) auto 0; width: fit-content; max-width: 88vw;
+    padding: var(--space-8) var(--space-16);
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.5);
+    background: rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.12);
+    color: var(--color-text); font-size: var(--font-size-md);
+}
+.mp-player-banner .mp-chip-dot { background: var(--player-color, var(--color-primary)); }
+.mp-banner-text strong { color: var(--player-color, var(--color-primary)); }
+.mp-edit-name {
+    background: none; border: none; cursor: pointer;
+    font-size: var(--font-size-lg); padding: var(--space-2); line-height: 1;
+}
+.mp-center-hint {
+    color: var(--color-text-secondary); font-size: var(--font-size-sm);
+    margin-top: var(--space-8); text-align: center;
+}
+
+/* ---------- Phone round-over card additions ---------- */
+.mobile-go-subtitle {
+    color: var(--color-warning); font-size: var(--font-size-lg);
+    margin: 0 0 var(--space-16);
+}
+.mp-wait-note {
+    color: var(--color-text-secondary); font-size: var(--font-size-md);
+    margin: 0 0 var(--space-8); animation: mpPulse 2s infinite;
+}
+@keyframes mpPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+.mobile-game-over-content.win-flash { animation: winPulse 900ms var(--ease-standard) both; }
+@keyframes winPulse {
+    0%   { box-shadow: 0 0 0 rgba(255, 207, 77, 0); }
+    40%  { box-shadow: 0 0 44px 8px rgba(255, 207, 77, 0.6); border-color: rgba(255, 207, 77, 0.8); }
+    100% { box-shadow: var(--shadow-lg); }
+}
+
+/* ---------- Motion + small screens ---------- */
+@media (prefers-reduced-motion: reduce) {
+    .mp-chip--joined,
+    .mobile-game-over-content.win-flash,
+    .mp-wait-note { animation: none !important; }
+}
+@media (max-width: 480px) {
+    .mp-player-banner { font-size: var(--font-size-sm); padding: var(--space-6) var(--space-12); }
+    .mp-center-hint { font-size: var(--font-size-xs); }
+}

@@ -13,8 +13,32 @@ function shareUrl() {
     return `${location.origin}${location.pathname}`;
 }
 
-/** Caption for the score. (No high-score flair: the phone's localStorage differs from the host's.) */
-function buildShareText(score) {
+// Multiplayer share context, set by mp-ui.js when a round's results arrive:
+// { outcome: 'winner'|'eliminated', defeated: [names], by: name|null, score }.
+// Null = solo (the classic caption).
+let mpShareContext = null;
+
+/** mp-ui.js hands the latest round outcome here so shares brag accurately. */
+function setMpShareContext(ctx) {
+    mpShareContext = ctx;
+}
+
+/**
+ * Caption for the score. (No high-score flair: the phone's localStorage differs
+ * from the host's.) With a multiplayer context the caption names the rivalry.
+ * @param {number} score
+ * @param {object|null} [ctx] - multiplayer outcome (omit for solo).
+ */
+function buildShareText(score, ctx) {
+    if (ctx && ctx.outcome === 'winner') {
+        const who = (ctx.defeated && ctx.defeated.length) ? ctx.defeated.join(' & ') : 'everyone';
+        return `I defeated ${who} with the score of ${score} on Snake 🐍🔥 — can you beat me?`;
+    }
+    if (ctx && ctx.outcome === 'eliminated') {
+        return ctx.by
+            ? `${ctx.by} got me this time 💀 I scored ${score} on Snake — rematch?`
+            : `I crashed out at ${score} on Snake 💥 — rematch?`;
+    }
     return `I scored ${score} on Snake 🐍🔥 — can you beat me?`;
 }
 
@@ -58,9 +82,14 @@ function shareToInstagram(text, url) {
 
 /** Route a share button to its network's web intent. */
 function openShare(network) {
-    const score = (typeof gameState !== 'undefined' && gameState) ? gameState.score : 0;
-    trackEvent('share', { method: network, content_type: 'score' });
-    const text = buildShareText(score);
+    const ctx = mpShareContext;
+    const score = ctx ? ctx.score
+        : ((typeof gameState !== 'undefined' && gameState) ? gameState.score : 0);
+    trackEvent('share', {
+        method: network,
+        content_type: ctx ? (ctx.outcome === 'winner' ? 'mp_win' : 'mp_loss') : 'score'
+    });
+    const text = buildShareText(score, ctx);
     const url = shareUrl();
     const t = encodeURIComponent(text);
     const u = encodeURIComponent(url);
@@ -90,6 +119,7 @@ function wireGameOverCard() {
     const playAgain = document.getElementById('play-again-btn');
     if (!playAgain) return;
     playAgain.addEventListener('click', () => {
+        mpShareContext = null; // the next round writes a fresh outcome
         // On the phone, ask the desktop host to restart; on the desktop, restart directly.
         const onPhone = (typeof sessionManager !== 'undefined' && sessionManager && sessionManager.isDesktop === false);
         if (onPhone && typeof sendGameAction === 'function') {
@@ -102,5 +132,5 @@ function wireGameOverCard() {
 
 // Expose for Node/Vitest only (no-op in the browser classic-script context).
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { shareUrl, buildShareText, openShare, wireGameOverCard };
+    module.exports = { shareUrl, buildShareText, setMpShareContext, openShare, wireGameOverCard };
 }

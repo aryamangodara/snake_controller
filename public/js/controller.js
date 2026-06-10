@@ -314,7 +314,14 @@ async function connectViaRobustHybrid(sessionCode) {
         if (docSnapshot.exists) {
             const sessionData = docSnapshot.data();
             debugLog('✅ Session found in Firestore:', sessionData);
-            
+
+            // Multiplayer-capable session (every NEW desktop creates these):
+            // the whole join/lobby/round journey lives in mp-client.js. The
+            // legacy path below keeps serving old cached desktops.
+            if (sessionData.mode === 'multi' && typeof connectMultiplayer === 'function') {
+                return connectMultiplayer(sessionCode, sessionDoc, sessionData);
+            }
+
             sessionManager.connectedSession = sessionCode;
             sessionManager.connectionType = 'hybrid';
             showControllerInterface();
@@ -554,10 +561,10 @@ function sendGameAction(action) {
     
     if (sessionManager.connectionType === 'hybrid' && firestore) {
         const sessionDoc = firestore.collection('sessions').doc(sessionManager.connectedSession);
-        sessionDoc.update({
-            gameAction: action,
-            lastActivity: firebase.firestore.FieldValue.serverTimestamp()
-        }).catch(error => console.error('Error sending game action:', error));
+        const update = { lastActivity: firebase.firestore.FieldValue.serverTimestamp() };
+        if (mpClient.slot) update['gameActions.' + mpClient.slot] = action; // multiplayer: own slot
+        else update.gameAction = action;                                    // legacy solo field
+        sessionDoc.update(update).catch(error => console.error('Error sending game action:', error));
     } else if (sessionManager.connectionType === 'localStorage') {
         localStorage.setItem(`session_${sessionManager.connectedSession}_action`, JSON.stringify({
             action: action,

@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="css/desktop.css">
     <link rel="stylesheet" href="css/mobile.css">
     <link rel="stylesheet" href="css/leaderboard.css">
+    <link rel="stylesheet" href="css/multiplayer.css">
     
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="32x32" href="snake-favicon.png">
@@ -144,6 +145,13 @@
                             </div>
                             <p class="restart-prompt">Press Space to play again · or use your phone</p>
                         </div>
+                        <!-- Multiplayer end screen (winner + standings, built by mp-ui.js;
+                             shown via #game-over.mp — the solo card above is untouched) -->
+                        <div id="mp-game-over-content" class="game-over-content mp-go-content">
+                            <h2 id="mp-winner-title">🏆</h2>
+                            <ol id="mp-standings" class="mp-standings"></ol>
+                            <p class="restart-prompt">Press ▶ on any phone to play again · or press Space</p>
+                        </div>
                     </div>
                 </div>
                 
@@ -157,11 +165,26 @@
                             <span class="score-label">Best</span>
                             <span id="high-score" class="score-value">0</span>
                         </div>
+                        <!-- Multiplayer scoreboard (rows generated per player by mp-ui.js;
+                             shown via .score-card.mp, solo keeps the pair above) -->
+                        <ul id="mp-scoreboard" class="mp-scoreboard"></ul>
                     </div>
 
                     <div class="connection-card">
                         <h3 class="qr-headline">📱 Scan to Play</h3>
                         <p class="qr-subhead">Point your phone camera here</p>
+
+                        <!-- Multiplayer lobby roster — hidden until the first phone joins;
+                             chips are generated per slot by mp-ui.js -->
+                        <div id="mp-roster" class="mp-roster hidden">
+                            <div class="mp-roster-header">
+                                <span class="mp-roster-title">Players</span>
+                                <span id="mp-roster-count" class="mp-roster-count">0/3</span>
+                            </div>
+                            <ul id="mp-roster-list" class="mp-roster-list"></ul>
+                            <p id="mp-start-hint" class="mp-start-hint hidden">Any player can press ▶ to start</p>
+                        </div>
+                        <span id="mp-announcer" class="sr-only" aria-live="polite"></span>
                         <div class="camera-cue" aria-hidden="true">▼</div>
 
                         <div class="qr-container">
@@ -227,18 +250,26 @@
         <!-- Controller Interface - Joystick Style -->
         <div id="controller-interface" class="controller-interface">
             <div class="joystick-container">
+                <!-- Multiplayer identity banner: "You are ● Player 2 — Sam" -->
+                <div id="mp-player-banner" class="mp-player-banner hidden">
+                    <span class="mp-chip-dot" aria-hidden="true"></span>
+                    <span class="mp-banner-text">You're in! You are <strong id="mp-banner-name">Player 1</strong></span>
+                    <button id="mp-edit-name" class="mp-edit-name" type="button" aria-label="Edit your name">✏️</button>
+                </div>
+
                 <!-- Joystick Control -->
                 <div class="joystick-area">
                     <div id="joystick-base" class="joystick-base">
                         <div id="joystick-handle" class="joystick-handle"></div>
                     </div>
                 </div>
-                
+
                 <!-- Center Control Button -->
                 <div class="center-control">
                     <button id="btn-center" class="control-btn center-btn" disabled>
                         <span class="center-icon">▶</span>
                     </button>
+                    <p id="mp-center-hint" class="mp-center-hint hidden">Press ▶ to start — any player can</p>
                 </div>
             </div>
         </div>
@@ -247,6 +278,7 @@
         <div id="mobile-game-over" class="mobile-game-over hidden">
             <div class="mobile-game-over-content">
                 <h2 class="mobile-go-title">Game Over!</h2>
+                <p id="mobile-go-subtitle" class="mobile-go-subtitle hidden"></p>
                 <div class="mobile-score">
                     <span class="mobile-score-label">Score</span>
                     <span id="mobile-final-score" class="mobile-score-value">0</span>
@@ -258,6 +290,7 @@
                     <button class="share-btn" type="button" data-share="facebook" aria-label="Share on Facebook"><i class="fab fa-facebook-f"></i></button>
                     <button class="share-btn" type="button" data-share="instagram" aria-label="Share on Instagram"><i class="fab fa-instagram"></i></button>
                 </div>
+                <p id="mp-wait-note" class="mp-wait-note hidden">Waiting for the round to end…</p>
                 <button id="play-again-btn" class="btn-play-again" type="button">Play Again</button>
             </div>
         </div>
@@ -275,9 +308,12 @@
     <script src="js/effects.js"></script>
     <script src="js/mp-engine.js"></script>
     <script src="js/network.js"></script>
+    <script src="js/mp-net.js"></script>
     <script src="js/game.js"></script>
     <script src="js/share.js"></script>
+    <script src="js/mp-ui.js"></script>
     <script src="js/controller.js"></script>
+    <script src="js/mp-client.js"></script>
     <script src="js/main.js"></script>
     
     <!-- Loading screen handler: reveal the app as soon as the page is ready -->
