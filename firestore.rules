@@ -14,10 +14,62 @@ service cloud.firestore {
     // (console-side). If Anonymous Auth is added later, store an ownerId on create
     // and require request.auth.uid == ownerId here.
     match /sessions/{code} {
+      // ---- Multiplayer (v2) validators. Every new field is OPTIONAL so legacy
+      // solo docs — written by old cached clients and by the unchanged solo
+      // write paths — keep validating: the rules are a strict superset, safe to
+      // deploy in any order relative to the code. Slots are validated for
+      // p1..p6 even though the app currently caps at gameConfig.maxPlayers = 3,
+      // so raising the cap later needs no rules change. ----
+      function validPlayer(p) {
+        return p.keys().hasOnly(['name', 'token', 'score', 'alive', 'connected', 'joinedAt', 'death'])
+          && p.name is string && p.name.size() >= 1 && p.name.size() <= 16
+          && p.token is string && p.token.size() >= 1 && p.token.size() <= 40
+          && p.score is number && p.score >= 0 && p.score <= 100000
+          && p.alive is bool
+          && p.connected is bool;
+      }
+
+      function validPlayers(d) {
+        return d.players is map
+          && d.players.keys().hasOnly(['p1', 'p2', 'p3', 'p4', 'p5', 'p6'])
+          && (!('p1' in d.players) || validPlayer(d.players.p1))
+          && (!('p2' in d.players) || validPlayer(d.players.p2))
+          && (!('p3' in d.players) || validPlayer(d.players.p3))
+          && (!('p4' in d.players) || validPlayer(d.players.p4))
+          && (!('p5' in d.players) || validPlayer(d.players.p5))
+          && (!('p6' in d.players) || validPlayer(d.players.p6));
+      }
+
+      function validAction(a) {
+        return a == null || a in ['start', 'restart'];
+      }
+
+      function validGameActions(d) {
+        return d.gameActions is map
+          && d.gameActions.keys().hasOnly(['p1', 'p2', 'p3', 'p4', 'p5', 'p6'])
+          && (!('p1' in d.gameActions) || validAction(d.gameActions.p1))
+          && (!('p2' in d.gameActions) || validAction(d.gameActions.p2))
+          && (!('p3' in d.gameActions) || validAction(d.gameActions.p3))
+          && (!('p4' in d.gameActions) || validAction(d.gameActions.p4))
+          && (!('p5' in d.gameActions) || validAction(d.gameActions.p5))
+          && (!('p6' in d.gameActions) || validAction(d.gameActions.p6));
+      }
+
       function validShape() {
-        return request.resource.data.keys().hasOnly(
-          ['created', 'connected', 'gameState', 'gameAction', 'lastActivity', 'version', 'feedback']
-        );
+        return request.resource.data.keys().hasOnly([
+            'created', 'connected', 'gameState', 'gameAction', 'lastActivity',
+            'version', 'feedback',                       // legacy solo keys (unchanged)
+            'mode', 'players', 'gameActions', 'results'  // multiplayer (v2) keys
+          ])
+          && (!('mode' in request.resource.data) || request.resource.data.mode == 'multi')
+          && (!('players' in request.resource.data) || validPlayers(request.resource.data))
+          && (!('gameActions' in request.resource.data) || validGameActions(request.resource.data))
+          && (!('results' in request.resource.data)
+              || request.resource.data.results == null
+              || request.resource.data.results is map);
+        // `results` and per-player `death` are desktop-written display data —
+        // deep array validation in rules is brittle, so they are only shallowly
+        // validated (accepted risk; see .agent/system/firebase_schema.md).
       }
 
       allow read, delete: if code.matches('^[0-9]{6}$');
