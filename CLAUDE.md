@@ -112,10 +112,11 @@ reference + how to view: `.agent/system/analytics.md`.
   another file. ESLint's `no-undef` is **on** (error) with every cross-file global declared in
   `.eslintrc.json` `globals`: when you add/rename/remove a top-level function or `let`/`const`
   in `public/js/*`, update that list or CI fails (that failure is the feature).
-- **ESLint `no-unused-vars` false positives** are expected for the cross-file globals declared in
-  `config.js` (`app`, `database`, `firestore`, `analytics`, `firebaseReady`): they're consumed in
-  *other* files, but ESLint lints each file alone. They're **warnings** (the lint command still
-  exits 0) — safe to ignore.
+- **ESLint `no-unused-vars` false positives** are expected for cross-file *functions* (e.g.
+  `submitGlobalScore` is defined in `leaderboard.js` but called from `game.js`): ESLint lints each
+  file alone, so it can't see those reads. They're **warnings** (the lint command still exits 0) —
+  safe to ignore. The `config.js` globals carry explicit `eslint-disable-next-line` directives
+  (`/* exported */` would be idiomatic but is ignored when `env.node` is enabled).
 - Production `console.log` is gated behind `debugLog()` / `DEBUG` in `utils.js` — use `debugLog`
   for dev chatter; reserve `console.warn`/`console.error` (never gated) for real problems.
 - The PWA **service worker is network-first**, so online users always get fresh code — but an
