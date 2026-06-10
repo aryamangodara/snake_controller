@@ -275,10 +275,6 @@
     
     <!-- Loading screen handler: reveal the app as soon as the page is ready -->
     <script>
-        // A session code in the URL means this device is the controller (mobile) view.
-        const urlParams = new URLSearchParams(window.location.search);
-        const hasSession = urlParams.get('session');
-
         function revealApp() {
             const loadingScreen = document.getElementById('loading-screen');
             const desktopView = document.getElementById('desktop-view');
@@ -287,15 +283,18 @@
             // cssText uses !important to override the media-query CSS at the top of <head>.
             if (loadingScreen) loadingScreen.style.cssText = 'display: none !important';
 
-            const isController = window.innerWidth <= 768 || hasSession;
+            // Purely cosmetic: READ the role decided once by detectDevice() (main.js,
+            // DOMContentLoaded — always before `load`). Never recompute it here, or the
+            // two code paths can race and disagree (wrong view initialized).
+            const isController = typeof sessionManager !== 'undefined'
+                ? !sessionManager.isDesktop
+                : window.innerWidth <= 768;
             if (isController) {
                 if (mobileView) mobileView.style.cssText = 'display: block !important';
                 if (desktopView) desktopView.style.cssText = 'display: none !important';
-                if (typeof sessionManager !== 'undefined') sessionManager.isDesktop = false;
             } else {
                 if (desktopView) desktopView.style.cssText = 'display: block !important';
                 if (mobileView) mobileView.style.cssText = 'display: none !important';
-                if (typeof sessionManager !== 'undefined') sessionManager.isDesktop = true;
             }
         }
 
