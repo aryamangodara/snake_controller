@@ -40,3 +40,18 @@ Sessions are ephemeral. The desktop host registers `onDisconnect().remove()` on 
 best-effort-deletes the Firestore doc + RTDB node on `beforeunload`. For guaranteed Firestore
 cleanup, configure a **TTL policy** on the `lastActivity` field (Firebase console → Firestore →
 TTL) so abandoned sessions expire automatically.
+
+## Security model & accepted risks
+There is **no authentication** — access is scoped by path shape (6-digit code) and document
+shape, not identity. The following risks are **known and accepted** for this project's scale:
+
+- **Session griefing:** anyone who guesses/enumerates an active 6-digit code can read the
+  session, inject joystick input, send start/restart actions, or delete the session doc. The
+  open `delete` grant cannot be removed — the host's own `beforeunload` cleanup depends on it.
+  Impact is annoyance only; no user data is at stake.
+- **Leaderboard spoofing:** writes are shape/range-validated and monotonic, but any client can
+  submit an in-range fake score or create rows under arbitrary device ids.
+
+**Mitigations (console-side, owner action):** Firestore TTL on `sessions.lastActivity`, a
+billing **budget alert** as the cost tripwire, and — if real traffic ever arrives — Firebase
+**App Check** plus Anonymous Auth with an `ownerId` on session create.

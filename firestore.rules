@@ -5,8 +5,14 @@ service cloud.firestore {
 
     // Ephemeral cross-device game sessions, keyed by a 6-digit code.
     // This app has no authentication, so access is scoped by path + document
-    // shape rather than per-user ownership. If Anonymous Auth is added later,
-    // store an ownerId on create and require request.auth.uid == ownerId here.
+    // shape rather than per-user ownership. The open `delete` grant is REQUIRED:
+    // the desktop host best-effort-deletes its own session doc on beforeunload
+    // (network.js), and without auth there is no way to distinguish the host from
+    // anyone else. Accepted risk: any client who guesses/enumerates an active code
+    // can read, steer, or delete that session (griefing only — no user data at
+    // stake). Mitigations: Firestore TTL on lastActivity + a billing budget alert
+    // (console-side). If Anonymous Auth is added later, store an ownerId on create
+    // and require request.auth.uid == ownerId here.
     match /sessions/{code} {
       function validShape() {
         return request.resource.data.keys().hasOnly(
