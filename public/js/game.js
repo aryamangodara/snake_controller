@@ -321,61 +321,19 @@ function moveSnake() {
 }
 
 /**
- * Handles smooth following for the segments
+ * Handles smooth following for the segments (geometry lives in logic.js so
+ * multiplayer can run it per-snake).
  */
 function updateSnakeSegments(prevHeadPos) {
-    for (let i = 1; i < gameState.snake.length; i++) {
-        const currentSegment = gameState.snake[i];
-        const targetSegment = i === 1 ? prevHeadPos : gameState.snake[i - 1];
-        
-        const dx = targetSegment.x - currentSegment.x;
-        const dy = targetSegment.y - currentSegment.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance > gameConfig.segmentSpacing) {
-            const ratio = (distance - gameConfig.segmentSpacing) / distance;
-            currentSegment.x += dx * ratio * 0.8; // Smooth following
-            currentSegment.y += dy * ratio * 0.8;
-        }
-    }
+    followSegments(gameState.snake, prevHeadPos, gameConfig);
 }
 
 /**
- * Automatically places a new tail segment appropriately
+ * Automatically places a new tail segment appropriately (geometry in logic.js).
  */
 function addSnakeSegment() {
-    if (gameState.snake.length > 0) {
-        const tail = gameState.snake[gameState.snake.length - 1];
-        let newSegment;
-        
-        if (gameState.snake.length > 1) {
-            const secondToLast = gameState.snake[gameState.snake.length - 2];
-            const dx = tail.x - secondToLast.x;
-            const dy = tail.y - secondToLast.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance > 0) {
-                const ratio = gameConfig.segmentSpacing / distance;
-                newSegment = {
-                    x: tail.x + dx * ratio,
-                    y: tail.y + dy * ratio
-                };
-            } else {
-                newSegment = {
-                    x: tail.x - gameConfig.segmentSpacing,
-                    y: tail.y
-                };
-            }
-        } else {
-            newSegment = {
-                x: tail.x - gameConfig.segmentSpacing,
-                y: tail.y
-            };
-        }
-        
-        gameState.snake.push(newSegment);
-        debugLog('🐍 Snake grew! Length:', gameState.snake.length);
-    }
+    growTail(gameState.snake, gameConfig);
+    debugLog('🐍 Snake grew! Length:', gameState.snake.length);
 }
 
 /**

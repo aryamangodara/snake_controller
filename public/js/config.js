@@ -93,6 +93,13 @@ const gameConfig = {
     // Connection settings
     connectionRetries: 5,
     retryDelayMs: 2000,
+
+    // Multiplayer. THE single knob for player capacity: slots, colors, spawn
+    // layout, lobby UI, and the claim flow all derive from it (players.js /
+    // mp-*.js), and the deployed security rules already accept p1–p6 — so
+    // raising this to 6 later is a one-line change. If you do, consider
+    // enlarging boardSize / trimming wallMargin so six snakes have room.
+    maxPlayers: 3,
 };
 
 // Palette used for painting canvas elements. Aligned with the teal brand tokens in

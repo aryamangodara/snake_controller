@@ -81,7 +81,27 @@ function hitsWall(head, config) {
 }
 
 /**
- * True if the head overlaps a body segment, ignoring the first
+ * True if the head overlaps any segment of `snake`, ignoring the first `skip`
+ * segments. skip = minSelfCollisionSegments → classic self-collision (the first
+ * segments are always near the head); skip = 0 → ANOTHER player's full snake,
+ * head included — this is the multiplayer bite/head-on check.
+ * @param {{x:number,y:number}} head
+ * @param {Array<{x:number,y:number}>} snake
+ * @param {number} skip - how many leading segments to ignore.
+ * @param {object} config - gameConfig (uses snakeSegmentSize).
+ * @returns {boolean}
+ */
+function hitsSnake(head, snake, skip, config) {
+    for (let i = skip; i < snake.length; i++) {
+        const segment = snake[i];
+        const distance = Math.hypot(head.x - segment.x, head.y - segment.y);
+        if (distance < config.snakeSegmentSize * 0.8) return true;
+    }
+    return false;
+}
+
+/**
+ * True if the head overlaps its own body, ignoring the first
  * `minSelfCollisionSegments` segments (which are always near the head).
  * @param {{x:number,y:number}} head
  * @param {Array<{x:number,y:number}>} snake
@@ -89,12 +109,7 @@ function hitsWall(head, config) {
  * @returns {boolean}
  */
 function hitsSelf(head, snake, config) {
-    for (let i = config.minSelfCollisionSegments; i < snake.length; i++) {
-        const segment = snake[i];
-        const distance = Math.hypot(head.x - segment.x, head.y - segment.y);
-        if (distance < config.snakeSegmentSize * 0.8) return true;
-    }
-    return false;
+    return hitsSnake(head, snake, config.minSelfCollisionSegments, config);
 }
 
 /**
@@ -129,6 +144,123 @@ function joystickToControl(input, baseSpeed, config) {
     return { active: false, targetDirection: null, speed: baseSpeed };
 }
 
+/**
+ * Spawn pose for one of N players: heads sit on a ring of radius 150 around the
+ * board center, facing radially OUTWARD (away from each other), bodies extending
+ * back toward the center. A 1-player game keeps the classic solo pose (center,
+ * facing right) so solo layouts are unchanged.
+ * @param {number} slotIndex - 0-based player index.
+ * @param {number} playerCount - total players this round (1..maxPlayers).
+ * @param {object} config - gameConfig (uses boardSize).
+ * @returns {{x:number, y:number, heading:number}}
+ */
+function spawnPose(slotIndex, playerCount, config) {
+    const cx = config.boardSize.width / 2;
+    const cy = config.boardSize.height / 2;
+    if (playerCount <= 1) return { x: cx, y: cy, heading: 0 };
+    const heading = Math.PI / 2 + slotIndex * (2 * Math.PI / playerCount);
+    return {
+        x: cx + Math.cos(heading) * 150,
+        y: cy + Math.sin(heading) * 150,
+        heading: normalizeAngle(heading)
+    };
+}
+
+/**
+ * Build a snake body from a spawn pose: the head at the pose, segments trailing
+ * opposite the heading. spawnPose(0, 1) + this reproduces createInitialSnake().
+ * @param {{x:number, y:number, heading:number}} pose
+ * @param {number} segmentCount
+ * @param {number} spacing - gameConfig.segmentSpacing.
+ * @returns {Array<{x:number, y:number}>}
+ */
+function snakeFromPose(pose, segmentCount, spacing) {
+    const dx = -Math.cos(pose.heading) * spacing;
+    const dy = -Math.sin(pose.heading) * spacing;
+    return Array.from({ length: segmentCount }, (_, i) => ({
+        x: pose.x + dx * i,
+        y: pose.y + dy * i
+    }));
+}
+
+/**
+ * Smoothly pull each segment toward the one ahead of it (the classic follow).
+ * Mutates `snake` in place. Extracted from the solo engine so multiplayer can
+ * run it per-snake.
+ * @param {Array<{x:number,y:number}>} snake
+ * @param {{x:number,y:number}} prevHeadPos - the head's position BEFORE this tick's move.
+ * @param {object} config - gameConfig (uses segmentSpacing).
+ */
+function followSegments(snake, prevHeadPos, config) {
+    for (let i = 1; i < snake.length; i++) {
+        const currentSegment = snake[i];
+        const targetSegment = i === 1 ? prevHeadPos : snake[i - 1];
+
+        const dx = targetSegment.x - currentSegment.x;
+        const dy = targetSegment.y - currentSegment.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance > config.segmentSpacing) {
+            const ratio = (distance - config.segmentSpacing) / distance;
+            currentSegment.x += dx * ratio * 0.8; // Smooth following
+            currentSegment.y += dy * ratio * 0.8;
+        }
+    }
+}
+
+/**
+ * Append a new tail segment one spacing behind the current tail, along the tail
+ * direction. Mutates `snake` in place. Extracted from the solo engine so
+ * multiplayer can grow any player's snake.
+ * @param {Array<{x:number,y:number}>} snake
+ * @param {object} config - gameConfig (uses segmentSpacing).
+ */
+function growTail(snake, config) {
+    if (snake.length === 0) return;
+    const tail = snake[snake.length - 1];
+    let newSegment;
+
+    if (snake.length > 1) {
+        const secondToLast = snake[snake.length - 2];
+        const dx = tail.x - secondToLast.x;
+        const dy = tail.y - secondToLast.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance > 0) {
+            const ratio = config.segmentSpacing / distance;
+            newSegment = { x: tail.x + dx * ratio, y: tail.y + dy * ratio };
+        } else {
+            newSegment = { x: tail.x - config.segmentSpacing, y: tail.y };
+        }
+    } else {
+        newSegment = { x: tail.x - config.segmentSpacing, y: tail.y };
+    }
+
+    snake.push(newSegment);
+}
+
+/**
+ * Last-snake-standing verdict after a tick's deaths have been applied.
+ * - More than one player alive → the round continues.
+ * - Exactly one alive → that slot wins.
+ * - Zero alive (simultaneous final deaths, e.g. a head-on) → the best score
+ *   among the players who died THIS tick wins; an exact tie is a draw
+ *   (winnerSlot null). Players who died on earlier ticks never win.
+ * @param {Array<{slot:string, alive:boolean, score:number}>} players
+ * @param {Array<string>} justDiedSlots - slots eliminated this tick.
+ * @returns {{over:boolean, winnerSlot:(string|null)}}
+ */
+function resolveWinner(players, justDiedSlots) {
+    const alive = players.filter((p) => p.alive);
+    if (alive.length > 1) return { over: false, winnerSlot: null };
+    if (alive.length === 1) return { over: true, winnerSlot: alive[0].slot };
+    const justDied = players.filter((p) => justDiedSlots.includes(p.slot));
+    if (justDied.length === 0) return { over: true, winnerSlot: null };
+    const top = Math.max(...justDied.map((p) => p.score));
+    const winners = justDied.filter((p) => p.score === top);
+    return { over: true, winnerSlot: winners.length === 1 ? winners[0].slot : null };
+}
+
 // Expose for Node/Vitest only (no-op in the browser).
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
@@ -137,8 +269,14 @@ if (typeof module !== 'undefined' && module.exports) {
         stepDirection,
         speedToTurnStep,
         hitsWall,
+        hitsSnake,
         hitsSelf,
         eatsFood,
-        joystickToControl
+        joystickToControl,
+        spawnPose,
+        snakeFromPose,
+        followSegments,
+        growTail,
+        resolveWinner
     };
 }
