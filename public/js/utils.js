@@ -3,6 +3,19 @@
 // ==========================================
 // Loaded first in index.html so every later script can use these helpers.
 
+// Flip to true for verbose development logging. Warnings and errors always log.
+const DEBUG = false;
+
+/**
+ * Development-only console.log — a no-op in production so gameplay-path logging
+ * (some of it per-frame) doesn't spam or slow the console. console.warn/error
+ * are NOT gated; real problems must stay visible.
+ * @param {...*} args - Forwarded to console.log when DEBUG is true.
+ */
+function debugLog(...args) {
+    if (DEBUG) console.log(...args);
+}
+
 /**
  * Safely parse a JSON string, returning a fallback instead of throwing on
  * malformed input. Used for localStorage payloads, which can be absent or

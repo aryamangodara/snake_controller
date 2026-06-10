@@ -4,7 +4,7 @@
   "description": "A modern Snake game with cross-device multiplayer functionality using Firebase",
   "scripts": {
     "start": "npx serve -s public",
-    "lint": "eslint public/js tests",
+    "lint": "eslint public tests",
     "format": "prettier --write \"public/**/*.{js,css,html}\" \"tests/**/*.js\"",
     "test": "vitest run"
   },
