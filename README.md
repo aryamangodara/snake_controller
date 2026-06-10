@@ -77,7 +77,7 @@ npm test         # Vitest unit tests (tests/)
 npm run format   # Prettier
 ```
 
-**Deploys are automatic** on push to `master` (GitHub Actions → `firebase deploy --only hosting`). Database/Firestore rules are **not** shipped by CI.
+**Deploys are automatic** on push to `master` (GitHub Actions → `firebase deploy --only hosting,firestore,database`) — the site **and** both security-rule sets ship together; the rules files in this repo are the source of truth.
 
 ---
 

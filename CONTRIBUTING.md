@@ -180,7 +180,7 @@ function handleJoystickInput(input) {
 ```
 ├── public/                 # Everything that ships (Firebase Hosting serves this)
 │   ├── css/                # variables → base → desktop / mobile (load order matters)
-│   ├── js/                 # 12 plain <script>s, one shared global scope, no bundler
+│   ├── js/                 # 13 plain <script>s, one shared global scope, no bundler
 │   ├── index.html          # both views: desktop host + mobile controller
 │   ├── sw.js               # network-first service worker (PWA offline shell)
 │   └── manifest.json       # PWA manifest
@@ -204,29 +204,30 @@ function handleJoystickInput(input) {
 
 ### Firebase Connection Problems
 ```javascript
-// Check Firebase configuration
-console.log('Firebase config:', firebaseConfig);
+// The app logs its connection mode on load — look for
+// "🚀 Firebase initialized" vs "Running in offline mode with localStorage".
+console.log(sessionManager.connectionType); // 'hybrid' or 'localStorage'
 
-// Verify Firestore rules allow read/write
-// Go to Firebase Console → Firestore → Rules
+// Security rules live in firestore.rules / database.rules.json in this repo
+// and are deployed by CI — don't hand-edit them in the Firebase console.
 ```
 
 ### Mobile Controller Not Working
 ```javascript
-// Enable debug logging
-sessionManager.debug = true;
+// Inspect the live session/connection state
+console.log(sessionManager);
 
-// Check localStorage data
-console.log('Session data:', localStorage.getItem('snake_session_123456'));
+// localStorage-fallback keys (single-device mode); <code> is the 6-digit session
+localStorage.getItem('currentSession');
+localStorage.getItem('session_<code>_state');    // { state, score }
+localStorage.getItem('session_<code>_joystick'); // { joystick: {x, y} }
 ```
 
 ### Performance Issues
 ```javascript
-// Reduce joystick update frequency
-gameConfig.joystickThrottleMs = 200; // Increase from 150
-
-// Monitor Firebase usage
-console.log('Firebase operations:', firestoreOperations);
+// Joystick updates are throttled via gameConfig.joystickThrottleMs
+// (config.js, default 33ms ≈ 30Hz). Raise it to reduce write frequency:
+gameConfig.joystickThrottleMs = 100;
 ```
 
 ## 🎮 Feature Ideas

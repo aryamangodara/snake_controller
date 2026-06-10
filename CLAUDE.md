@@ -17,11 +17,12 @@ https://go-console-84748.web.app/
   `npm run format` (Prettier).
 - **Deploy is automatic** on push to `master` via GitHub Actions
   (`.github/workflows/deploy.yml`, "Fast Deploy - CI/CD"), which runs `firebase deploy --only
-  hosting`. Do **not** run `firebase deploy` by hand (`.agent/workflows/deploy.md`). Note the
-  Action deploys *hosting only* — changes to `database.rules.json` or Firestore rules are **not**
-  shipped by CI.
-- CI runs `lint` + `test`, but both are **non-blocking** (`continue-on-error`) until verified green;
-  the build is gated only on `node --check` syntax + a couple of grep sanity checks.
+  hosting,firestore,database` — the static site **and both rule sets** ship together, so
+  `firestore.rules` / `database.rules.json` in this repo are the source of truth. Do **not** run
+  `firebase deploy` by hand against production; test rule changes on a scratch project first
+  (`.agent/workflows/deploy.md`).
+- CI is **blocking**: `lint`, `test` (Vitest, incl. the jsdom protocol smoke test in
+  `tests/protocol.test.js`), and a `node --check` syntax pass must all succeed before deploy.
 
 ## Architecture (the non-obvious parts)
 
@@ -29,8 +30,8 @@ https://go-console-84748.web.app/
 order, all sharing one global scope:
 
 ```
-utils.js → logic.js → config.js → state.js → leaderboard.js → sound.js → effects.js →
-network.js → game.js → share.js → controller.js → main.js
+utils.js → logic.js → config.js → state.js → leaderboard.js → leaderboard-ui.js → sound.js →
+effects.js → network.js → game.js → share.js → controller.js → main.js
 ```
 
 Functions and the large mutable state objects (`gameState`, `sessionManager`, `joystickState`,
@@ -74,8 +75,10 @@ reference + how to view: `.agent/system/analytics.md`.
 - `js/config.js` — Firebase init (incl. the guarded `analytics` / GA4 handle) + all tunables
   (`gameConfig`) + `colors` + `GameState` enum.
 - `js/state.js` — the global mutable state objects.
-- `js/leaderboard.js` — **local** high-score tracking via `localStorage`. **Not** a global/Firestore
-  leaderboard (despite the name — that was scoped but never built).
+- `js/leaderboard.js` — local high scores (`localStorage`) **plus** the global Firestore
+  leaderboard: per-device id/handle, score submission (monotonic, rules-validated), and the
+  capped rank query.
+- `js/leaderboard-ui.js` — the desktop trophy-modal UI for the global board (XSS-safe rendering).
 - `js/sound.js` — synthesized Web Audio SFX (food/crash/start) + mute toggle; food pitch rises with the combo.
 - `js/effects.js` — juice: particle bursts, ripples, score pops, screen shake (desktop render).
 - `js/network.js` — desktop session lifecycle, Firestore/RTDB wiring, QR generation, localStorage fallback.
@@ -83,7 +86,8 @@ reference + how to view: `.agent/system/analytics.md`.
 - `js/share.js` — the phone game-over card + social share intents (WhatsApp / X / Facebook / Instagram).
 - `js/controller.js` — mobile joystick capture, connection, and game-over-card wiring.
 - `js/main.js` — entry point / device detection.
-- `css/` — load order `variables.css` (tokens) → `base.css` → `desktop.css` / `mobile.css`.
+- `css/` — load order `variables.css` (tokens) → `base.css` → `desktop.css` / `mobile.css` →
+  `leaderboard.css`.
 - `sw.js` + `manifest.json` — PWA: installable + offline shell. The SW is **network-first** for
   same-origin requests (cache = offline fallback only); bump `CACHE` when shell assets change.
 
@@ -100,9 +104,10 @@ reference + how to view: `.agent/system/analytics.md`.
 
 - The Firebase **web `apiKey` in `config.js` is public by design** — not a leaked secret.
   Security must come from Firestore/RTDB rules, not from hiding the key.
-- The test-mode DB rules recorded in the repo's history carried an **expiry timestamp that has
-  already passed**; whatever protects the live databases lives in the Firebase console and is
-  not fully captured in version control.
+- The security rules in this repo (`firestore.rules`, `database.rules.json`) **are deployed by
+  CI on every master push** — do not hand-edit rules in the Firebase console; the next push
+  overwrites them. The security model is no-auth by design; accepted risks + mitigations are
+  documented in `.agent/system/firebase_schema.md`.
 - Everything shares global scope — renaming a function or variable can silently break a consumer
   in another file.
 - **ESLint `no-unused-vars` false positives** are expected for the cross-file globals declared in

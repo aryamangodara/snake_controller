@@ -25,23 +25,24 @@ Plain `<script>`s share **one global scope**, loaded in this fixed order — ear
 later files consume:
 
 ```
-utils.js → logic.js → config.js → state.js → leaderboard.js → sound.js → effects.js →
-network.js → game.js → share.js → controller.js → main.js
+utils.js → logic.js → config.js → state.js → leaderboard.js → leaderboard-ui.js → sound.js →
+effects.js → network.js → game.js → share.js → controller.js → main.js
 ```
 
-CSS load order: `variables.css` (tokens) → `base.css` → `desktop.css` / `mobile.css`.
+CSS load order: `variables.css` (tokens) → `base.css` → `desktop.css` / `mobile.css` →
+`leaderboard.css`.
 
 ## Directory structure
 - `public/` — the deployable static app (Firebase Hosting serves only this).
-  - `public/js/` — the 12 scripts above. Pure, testable math lives in `logic.js` (covered by `tests/`).
+  - `public/js/` — the 13 scripts above. Pure, testable math lives in `logic.js` (covered by `tests/`).
   - `public/css/` — split, token-driven styles (no `style.css`; no concatenated monolith).
   - `public/index.html` — entry point holding both views.
   - `public/sw.js` + `public/manifest.json` — PWA service worker (network-first) + manifest.
 - `tests/` — Vitest unit tests for `logic.js`.
-- `firebase.json`, `.firebaserc`, `database.rules.json` — Firebase project config (rules are **not**
-  shipped by CI).
-- `.github/workflows/deploy.yml` — GitHub Actions: lint + test (non-blocking) → `firebase deploy
-  --only hosting` on push to **`master`**.
+- `firebase.json`, `.firebaserc`, `database.rules.json`, `firestore.rules` — Firebase project
+  config; both rule sets are **deployed by CI** and are the source of truth.
+- `.github/workflows/deploy.yml` — GitHub Actions: lint + tests + syntax check (all blocking) →
+  `firebase deploy --only hosting,firestore,database` on push to **`master`**.
 
 ## Data flow
 Phone writes joystick input (RTDB) + start/restart (Firestore); desktop listens and runs physics.
