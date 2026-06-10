@@ -15,10 +15,13 @@ const firebaseConfig = {
     measurementId: "G-0DFSB38H21"
 };
 
-// Initialize Firebase with HYBRID approach: Realtime Database + Firestore
-// (assigned here, consumed by the other scripts in the shared global scope)
-/* exported app, database, firestore, analytics, firebaseReady */
+// Initialize Firebase with HYBRID approach: Realtime Database + Firestore.
+// Assigned here, consumed by the other scripts in the shared global scope — ESLint
+// lints each file alone, so it can't see those reads (/* exported */ would be the
+// idiomatic fix, but it is ignored when env.node is enabled).
+// eslint-disable-next-line no-unused-vars
 let app, database, firestore, analytics;
+// eslint-disable-next-line no-unused-vars
 let firebaseReady = false;
 
 /**
