@@ -45,7 +45,9 @@ function createInitialGameState() {
         joystickInput: { x: 0, y: 0 },
         frameCount: 0,
         combo: 0,          // Current eat streak (drives the score multiplier)
-        lastFoodTime: 0    // Timestamp of the last food eaten (for the combo window)
+        lastFoodTime: 0,   // Timestamp of the last food eaten (for the combo window)
+        mode: 'solo',      // 'solo' | 'multi' — every engine branch keys off this
+        players: []        // per-player state in multiplayer; inert (empty) in solo
     };
 }
 
@@ -64,6 +66,26 @@ let sessionManager = {
     connectionType: 'hybrid', // Modes: 'hybrid', 'localStorage'
     sessionReady: false, // Track if session is fully ready
     connectionRetries: 0
+};
+
+// Multiplayer session state — desktop host side. Inert until a multiplayer
+// session activates it (mp-net.js); plain literals only, so tests load clean.
+let mpSession = {
+    enabled: false,
+    live: new Set(),   // slots with a live RTDB controller child
+    inputs: {},        // slot -> last joystick {x, y}
+    roster: {},        // last-seen players map from the session doc
+    defeated: []       // elimination order accumulated for the results write
+};
+
+// Multiplayer client state — phone side. Inert until a phone joins a
+// multiplayer session (mp-client.js).
+let mpClient = {
+    slot: null,        // claimed slot ('p1'..'pN') or null
+    token: null,       // per-session rejoin token (localStorage-backed)
+    waiting: false,    // true while queued behind a round in progress
+    joining: false,    // re-entrancy guard around the claim transaction
+    sessionDocRef: null
 };
 
 // Canvas drawing context variables
