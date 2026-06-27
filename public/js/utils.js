@@ -55,6 +55,35 @@ function trackEvent(name, params = {}) {
 }
 
 /**
+ * Report an uncaught error to GA4 as a low-cardinality signal. NEVER logs the raw
+ * message (cardinality + PII risk) — only a bounded `reason` enum, a clamped error
+ * NAME (the JS constructor name, e.g. TypeError), and caller-supplied numeric/enum
+ * extras. Reuses trackEvent (no-ops when analytics/consent is absent, never throws)
+ * and additionally console.errors so the raw error stays visible in DevTools — we
+ * report + recover, we never swallow-and-hide.
+ *
+ * Cardinality discipline: `reason` is a fixed ~5-value enum; `error_name` is clamped
+ * to 40 chars; callers pass only numbers / bounded enums in `extra`. Never pass
+ * err.message, err.stack, a URL, or the 6-digit session code — those are unbounded
+ * and can carry PII.
+ * @param {string} reason - bounded enum: 'window_error' | 'unhandled_rejection' |
+ *                          'raf_loop' | 'rtdb_listener' | 'firestore_listener'
+ * @param {*} err - the thrown value (Error or otherwise).
+ * @param {object} [extra] - additional low-cardinality params (numbers / bounded enums only).
+ */
+function reportError(reason, err, extra = {}) {
+    try {
+        const name = (err && err.name ? String(err.name) : 'Error').slice(0, 40);
+        trackEvent('js_error', { reason, error_name: name, ...extra });
+        if (typeof console !== 'undefined' && console.error) {
+            console.error('[js_error]', reason, err);
+        }
+    } catch (_e) {
+        /* reporting must NEVER throw — it sits on the error path */
+    }
+}
+
+/**
  * Normalize a leaderboard handle: collapse any whitespace (tabs/newlines → single space),
  * trim, and clamp to 16 chars. Returns null if nothing valid remains. UX-only — the
  * firestore.rules re-validate length on the server, and the board renders names with
@@ -73,6 +102,7 @@ function sanitizeName(raw) {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         safeParse,
-        sanitizeName
+        sanitizeName,
+        reportError
     };
 }

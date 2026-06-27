@@ -238,6 +238,56 @@ body.loaded .mobile-view {
   color: var(--color-text-secondary);
 }
 
+/* ==========================================
+   GLOBAL ERROR RECOVERY BAR
+   ========================================== */
+
+/* Non-blocking, dismissible recovery affordance shown by the global error trap
+   (main.js showErrorRecovery). Fixed top-right so it never covers the board; only
+   its own buttons take pointer events, so canvas input outside the bar is untouched. */
+.error-recovery {
+  position: fixed;
+  top: var(--space-16);
+  right: var(--space-16);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  max-width: min(420px, calc(100vw - var(--space-32)));
+  padding: var(--space-12) var(--space-16);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.error-recovery-text {
+  flex: 1 1 auto;
+}
+
+.error-recovery-reload {
+  flex: 0 0 auto;
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+}
+
+.error-recovery-dismiss {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 0 var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.error-recovery-dismiss:hover {
+  color: var(--color-text);
+}
+
 /* Shield button — matches the .social-link sizing from desktop.css */
 .social-link.privacy-link {
   background: var(--color-secondary);

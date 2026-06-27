@@ -125,7 +125,46 @@ async function setupRobustHybridSession(sessionCode) {
         // 4. Listen for Realtime Database changes. The node carries either the
         // legacy flat shape (an old cached phone) or per-slot children (new
         // multiplayer phones) — both are handled so version skew degrades softly.
-        sessionManager.realtimeRef.on('value', (snapshot) => {
+        // Attached via a named helper so the error path can re-subscribe (bounded).
+        attachRealtimeListener(sessionManager.realtimeRef);
+
+        // 5. Listen to Firestore for game actions (legacy single field for old
+        // phones) + the multiplayer roster/per-slot actions (mp-net.js). Cached on
+        // sessionManager so resubscribeListeners() can re-attach the dropped listener.
+        sessionManager.firestoreDocRef = sessionDoc;
+        attachFirestoreListener(sessionDoc);
+
+        sessionManager.firebaseConnected = true;
+        sessionManager.sessionReady = true;
+        debugLog('🚀 Hybrid session fully ready! Mobile can now connect.');
+        updateConnectionStatus('Waiting for mobile controller...');
+        
+    } catch (error) {
+        console.error('❌ Hybrid session setup failed:', error);
+        debugLog('🔄 Falling back to localStorage...');
+        setupLocalStorageSession(sessionCode);
+    }
+}
+
+// Bounded re-subscribe budget per listener kind, so a permanent error (e.g.
+// permission-denied) can't spin a tight re-attach loop. After the cap we stop and
+// leave the user-facing "Reload" affordance (main.js) as the recovery path.
+let rtdbListenerRetries = 0;
+let firestoreListenerRetries = 0;
+const MAX_LISTENER_RETRIES = 3;
+const LISTENER_RETRY_BACKOFF_MS = 2000;
+
+/**
+ * Attach the RTDB joystick listener WITH an error callback. The success body is the
+ * original inline handler (network.js); the second arg is the error callback `.on()`
+ * accepts — on a drop (permission/network) it reports a bounded `rtdb_listener` js_error
+ * and attempts a bounded re-subscribe rather than failing silently.
+ * @param {object} ref - the RTDB reference (database.ref(`controllers/${code}`)).
+ */
+function attachRealtimeListener(ref) {
+    if (!ref) return;
+    ref.on('value',
+        (snapshot) => {
             const controllerData = snapshot.val();
             if (controllerData && controllerData.connected) {
                 // Legacy flat shape: one phone driving the solo snake.
@@ -142,11 +181,26 @@ async function setupRobustHybridSession(sessionCode) {
             if (typeof mpHandleControllerNode === 'function') {
                 mpHandleControllerNode(controllerData);
             }
+        },
+        (err) => {
+            // The listener is cancelled by Firebase on error — report + re-subscribe (bounded).
+            if (typeof reportError === 'function') reportError('rtdb_listener', err);
+            else console.error('RTDB listener error:', err);
+            resubscribeListeners('rtdb');
         });
-        
-        // 5. Listen to Firestore for game actions (legacy single field for old
-        // phones) + the multiplayer roster/per-slot actions (mp-net.js).
-        sessionManager.firestoreUnsubscribe = sessionDoc.onSnapshot((doc) => {
+}
+
+/**
+ * Attach the Firestore actions/roster snapshot listener WITH an error callback.
+ * onSnapshot's 2nd arg is the error callback — on a drop it reports a bounded
+ * `firestore_listener` js_error and attempts a bounded re-subscribe. The unsubscribe
+ * handle is cached on sessionManager (beforeunload + re-subscribe both use it).
+ * @param {object} sessionDoc - the Firestore session DocumentReference.
+ */
+function attachFirestoreListener(sessionDoc) {
+    if (!sessionDoc) return;
+    sessionManager.firestoreUnsubscribe = sessionDoc.onSnapshot(
+        (doc) => {
             if (doc.exists) {
                 const data = doc.data();
                 if (data.gameAction) {
@@ -162,17 +216,44 @@ async function setupRobustHybridSession(sessionCode) {
                     mpHandleDocSnapshot(doc);
                 }
             }
+        },
+        (err) => {
+            if (typeof reportError === 'function') reportError('firestore_listener', err);
+            else console.error('Firestore listener error:', err);
+            resubscribeListeners('firestore');
         });
-        
-        sessionManager.firebaseConnected = true;
-        sessionManager.sessionReady = true;
-        debugLog('🚀 Hybrid session fully ready! Mobile can now connect.');
-        updateConnectionStatus('Waiting for mobile controller...');
-        
-    } catch (error) {
-        console.error('❌ Hybrid session setup failed:', error);
-        debugLog('🔄 Falling back to localStorage...');
-        setupLocalStorageSession(sessionCode);
+}
+
+/**
+ * Re-attach a dropped desktop listener after a short backoff, bounded by
+ * MAX_LISTENER_RETRIES per kind so a permanent error never becomes a hot loop. Guarded
+ * by firebaseReady + an active session; after the cap we stop (the Reload affordance is
+ * the user's recovery). No new event shape is written — phone side + rules untouched.
+ * @param {'rtdb'|'firestore'} kind
+ */
+function resubscribeListeners(kind) {
+    if (!firebaseReady || !sessionManager.currentSession) return;
+
+    if (kind === 'rtdb') {
+        if (rtdbListenerRetries >= MAX_LISTENER_RETRIES) return;
+        rtdbListenerRetries++;
+        setTimeout(() => {
+            if (!firebaseReady || !sessionManager.currentSession || !sessionManager.realtimeRef) return;
+            try {
+                sessionManager.realtimeRef.off('value');
+            } catch (_e) { /* ignore — re-attaching anyway */ }
+            attachRealtimeListener(sessionManager.realtimeRef);
+        }, LISTENER_RETRY_BACKOFF_MS * rtdbListenerRetries);
+    } else if (kind === 'firestore') {
+        if (firestoreListenerRetries >= MAX_LISTENER_RETRIES) return;
+        firestoreListenerRetries++;
+        setTimeout(() => {
+            if (!firebaseReady || !sessionManager.currentSession || !sessionManager.firestoreDocRef) return;
+            if (sessionManager.firestoreUnsubscribe) {
+                try { sessionManager.firestoreUnsubscribe(); } catch (_e) { /* ignore */ }
+            }
+            attachFirestoreListener(sessionManager.firestoreDocRef);
+        }, LISTENER_RETRY_BACKOFF_MS * firestoreListenerRetries);
     }
 }
 

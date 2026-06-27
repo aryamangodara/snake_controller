@@ -10,6 +10,7 @@
     "safeParse": "readonly",
     "trackEvent": "readonly",
     "sanitizeName": "readonly",
+    "reportError": "readonly",
     "DEBUG": "readonly",
     "debugLog": "readonly",
 
@@ -258,7 +259,25 @@
     "sendGameAction": "readonly",
 
     "detectDevice": "readonly",
-    "initializeApp": "readonly"
+    "initializeApp": "readonly",
+
+    "errorRecoveryShown": "writable",
+    "jsErrorSends": "writable",
+    "MAX_JS_ERROR_SENDS": "readonly",
+    "reportErrorCapped": "readonly",
+    "showErrorRecovery": "readonly",
+    "installGlobalErrorTrap": "readonly",
+
+    "consecutiveFrameErrors": "writable",
+    "MAX_CONSECUTIVE_FRAME_ERRORS": "readonly",
+
+    "rtdbListenerRetries": "writable",
+    "firestoreListenerRetries": "writable",
+    "MAX_LISTENER_RETRIES": "readonly",
+    "LISTENER_RETRY_BACKOFF_MS": "readonly",
+    "attachRealtimeListener": "readonly",
+    "attachFirestoreListener": "readonly",
+    "resubscribeListeners": "readonly"
   },
   "rules": {
     "no-unused-vars": "warn",

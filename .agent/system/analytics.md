@@ -61,6 +61,7 @@ acquisition (referrer + `utm_*`). On top of that we fire custom events:
 | `leaderboard_submit` | `score` (number), `rank` (number; 0 = rank unknown) | `game.js` `submitAndShowRank()` |
 | `pwa_install` | `outcome` (`prompted`\|`installed`) | `index.html` install listeners |
 | `consent_update` | `outcome` (`granted`) | `consent.js` `setConsent()` — fires once, only on Accept |
+| `js_error` | `reason` (`window_error`\|`unhandled_rejection`\|`raf_loop`\|`rtdb_listener`\|`firestore_listener`), `error_name` (string ≤40 = JS constructor name, NOT the message), `source_line` (number; `window_error` only), `mode` (0/1; `raf_loop` only) | `utils.js` `reportError()` via the global trap (`main.js`), the rAF guard (`game.js`), and the desktop listener error callbacks (`network.js`). Never logs `message`/`stack`/URL/session code. |
 
 Every event also carries `device_role` (`desktop_host` / `phone_controller`).
 

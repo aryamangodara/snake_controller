@@ -203,42 +203,69 @@ function restartGame() {
     updateGameStateInFirebase();
 }
 
+// Consecutive frame errors (reset on the first clean frame). A transient throw should
+// degrade to a dropped frame, but a frame that throws EVERY tick must not spin forever
+// reporting + re-arming — after this many in a row we stop the loop and show recovery.
+let consecutiveFrameErrors = 0;
+const MAX_CONSECUTIVE_FRAME_ERRORS = 10;
+
 /**
- * RequestAnimationFrame engine pulse
+ * RequestAnimationFrame engine pulse. The frame BODY is wrapped so a single throw is
+ * reported and degrades to a dropped frame instead of permanently wedging the loop —
+ * the re-arm lives OUTSIDE the try, so it runs even when the body throws. A run of
+ * MAX_CONSECUTIVE_FRAME_ERRORS throws in a row stops the loop and surfaces the recovery
+ * affordance (guards against an infinite error-spam loop).
  */
 function updateGame(currentTime) {
     if (!gameState.gameRunning) return;
-    
-    const deltaTime = currentTime - gameState.lastUpdateTime;
-    const moveDeltaTime = currentTime - gameState.lastMoveTime;
-    
-    if (gameState.currentState === GameState.PLAYING) {
-        if (gameState.mode === 'multi') {
-            // The N-snake simulation lives in mp-engine.js; solo below is untouched.
-            updateMultiplayerFrame(currentTime, deltaTime, moveDeltaTime);
-        } else {
-            // Always update direction smoothly (frame-rate-independent; needs elapsed time)
-            updateSnakeDirection(deltaTime);
 
-            // CONSTANT MOVEMENT: Snake moves every frame regardless of joystick input
-            if (moveDeltaTime >= gameConfig.movementUpdateMs) {
-                moveSnake();
-                gameState.lastMoveTime = currentTime;
-            }
+    try {
+        const deltaTime = currentTime - gameState.lastUpdateTime;
+        const moveDeltaTime = currentTime - gameState.lastMoveTime;
 
-            gameState.frameCount++;
+        if (gameState.currentState === GameState.PLAYING) {
+            if (gameState.mode === 'multi') {
+                // The N-snake simulation lives in mp-engine.js; solo below is untouched.
+                updateMultiplayerFrame(currentTime, deltaTime, moveDeltaTime);
+            } else {
+                // Always update direction smoothly (frame-rate-independent; needs elapsed time)
+                updateSnakeDirection(deltaTime);
 
-            // Expire a stale combo so the badge clears if you dawdle between bites.
-            if (gameState.combo > 0 && Date.now() - gameState.lastFoodTime > gameConfig.comboWindowMs) {
-                gameState.combo = 0;
-                updateComboDisplay();
+                // CONSTANT MOVEMENT: Snake moves every frame regardless of joystick input
+                if (moveDeltaTime >= gameConfig.movementUpdateMs) {
+                    moveSnake();
+                    gameState.lastMoveTime = currentTime;
+                }
+
+                gameState.frameCount++;
+
+                // Expire a stale combo so the badge clears if you dawdle between bites.
+                if (gameState.combo > 0 && Date.now() - gameState.lastFoodTime > gameConfig.comboWindowMs) {
+                    gameState.combo = 0;
+                    updateComboDisplay();
+                }
             }
         }
+
+        renderGame();
+        gameState.lastUpdateTime = currentTime;
+        consecutiveFrameErrors = 0; // a clean frame resets the spam guard
+    } catch (err) {
+        consecutiveFrameErrors++;
+        // mode encoded as a NUMBER (0/1) to keep GA4 params low-cardinality.
+        if (typeof reportError === 'function') {
+            reportError('raf_loop', err, { mode: gameState.mode === 'multi' ? 1 : 0 });
+        }
+        if (typeof showErrorRecovery === 'function') showErrorRecovery();
+        // Don't kill the loop on a transient throw — but stop an unrecoverable per-frame
+        // throw from spinning forever (report + re-arm storm).
+        if (consecutiveFrameErrors >= MAX_CONSECUTIVE_FRAME_ERRORS) {
+            gameState.gameRunning = false;
+            return;
+        }
     }
-    
-    renderGame();
-    gameState.lastUpdateTime = currentTime;
-    
+
+    // Re-arm OUTSIDE the try so a thrown frame body can't wedge the loop.
     if (gameState.gameRunning) {
         gameLoop = requestAnimationFrame(updateGame);
     }
