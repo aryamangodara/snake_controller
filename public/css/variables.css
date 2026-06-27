@@ -79,6 +79,7 @@
   --select-caret-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23f5f5f5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 
   /* RGB versions for opacity control */
+  --color-primary-rgb: 33, 128, 141;
   --color-success-rgb: 33, 128, 141;
   --color-error-rgb: 192, 21, 47;
   --color-warning-rgb: 168, 75, 47;
@@ -205,6 +206,7 @@
     --select-caret-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23f5f5f5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 
     /* RGB versions for dark mode */
+    --color-primary-rgb: var(--color-teal-300-rgb);
     --color-success-rgb: var(--color-teal-300-rgb);
     --color-error-rgb: var(--color-red-400-rgb);
     --color-warning-rgb: var(--color-orange-400-rgb);
@@ -221,6 +223,7 @@
   --color-surface: var(--color-charcoal-800);
   --color-text: var(--color-gray-200);
   --color-primary: var(--color-teal-300);
+  --color-primary-rgb: 50, 184, 198;
   --color-surface-rgb: 38, 40, 40;
   --color-background-rgb: 31, 33, 33;
 }
@@ -230,6 +233,7 @@
   --color-surface: var(--color-cream-100);
   --color-text: var(--color-slate-900);
   --color-primary: var(--color-teal-500);
+  --color-primary-rgb: 33, 128, 141;
   --color-surface-rgb: 255, 255, 253;
   --color-background-rgb: 252, 252, 249;
 }
