@@ -143,6 +143,7 @@ const gameConfig = {
     // Connection settings
     connectionRetries: 5,
     retryDelayMs: 2000,
+    pairingNudgeMs: 20000, // Host: show the "still waiting? copy the link" nudge if no phone has connected by now
 
     // Multiplayer. THE single knob for player capacity: slots, colors, spawn
     // layout, lobby UI, and the claim flow all derive from it (players.js /

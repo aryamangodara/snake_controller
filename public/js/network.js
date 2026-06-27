@@ -18,6 +18,8 @@ async function generateNewSession() {
     }
 
     generateQRCode(sessionCode);
+    // Surface the same join URL as a copy-able link for can't-scan users.
+    setupPairingCopyLink(sessionCode);
 
     if (firebaseReady) {
         setupRobustHybridSession(sessionCode);
@@ -137,8 +139,10 @@ async function setupRobustHybridSession(sessionCode) {
         sessionManager.firebaseConnected = true;
         sessionManager.sessionReady = true;
         debugLog('🚀 Hybrid session fully ready! Mobile can now connect.');
-        updateConnectionStatus('Waiting for mobile controller...');
-        
+        updateConnectionStatus('Waiting for your phone…');
+        // Arm the "still waiting?" nudge — fires only if no phone connects in time.
+        startPairingNudge('hybrid');
+
     } catch (error) {
         console.error('❌ Hybrid session setup failed:', error);
         debugLog('🔄 Falling back to localStorage...');
@@ -172,9 +176,16 @@ function attachRealtimeListener(ref) {
                 // Fire once per session — this listener re-runs on every joystick
                 // update (~30Hz), so anything not per-frame belongs in this guard.
                 if (!sessionManager.controllerTracked) {
+                    // Did the timeout nudge fire before this phone connected? Capture it for
+                    // the funnel BEFORE clearing, so pairing_succeeded can say whether the
+                    // nudge "helped". The nudge element being visible == the timer elapsed.
+                    const nudgeEl = document.getElementById('desktop-pairing-nudge');
+                    const afterNudge = !!(nudgeEl && !nudgeEl.classList.contains('hidden'));
                     sessionManager.controllerTracked = true;
-                    updateConnectionStatus('Mobile controller connected ✅');
+                    clearPairingNudge();
+                    updateConnectionStatus('Phone connected ✅');
                     trackEvent('controller_connected', { side: 'desktop' });
+                    trackEvent('pairing_succeeded', { after_nudge: afterNudge });
                 }
             }
             // Per-slot children: route each live phone's joystick to its player.
@@ -311,7 +322,7 @@ function setupLocalStorageSession(sessionCode) {
                 const data = safeParse(e.newValue, {});
                 if (data.joystick) {
                     handleJoystickInputFromMobile(data.joystick, data.timestamp);
-                    updateConnectionStatus('Mobile controller connected (localStorage) ✅');
+                    updateConnectionStatus('Phone connected (same-device test) ✅');
                 }
             } else if (e.key === `session_${code}_action`) {
                 const data = safeParse(e.newValue, {});
@@ -324,7 +335,20 @@ function setupLocalStorageSession(sessionCode) {
     }
     
     sessionManager.sessionReady = true;
-    updateConnectionStatus('Waiting for mobile controller (localStorage mode)...');
+    // Same-device (two-tab) test mode — label it so it's never mistaken for real
+    // cross-device pairing. No timeout nudge here: localStorage can't bridge two devices.
+    updateConnectionStatus('Waiting (same-device test mode)…');
+}
+
+/**
+ * Builds the controller join URL for a code (the QR target AND the copy-link target).
+ * Single source of truth so the QR, the fallback link, and the Copy-link button can
+ * never drift apart. The code lives in the URL (it's the join link) — never log it.
+ * @param {string} sessionCode - The 6-digit session code.
+ * @returns {string} `${origin}${pathname}?session=<code>`
+ */
+function buildJoinUrl(sessionCode) {
+    return `${window.location.origin}${window.location.pathname}?session=${sessionCode}`;
 }
 
 /**
@@ -334,13 +358,13 @@ function generateQRCode(sessionCode) {
     const qrContainer = document.getElementById('qr-code-container');
     const qrCanvas = document.getElementById('qr-canvas');
     const qrLoading = document.getElementById('qr-loading');
-    
+
     if (!qrContainer) return;
-    
+
     if (qrLoading) qrLoading.style.display = 'flex';
     if (qrContainer) qrContainer.style.display = 'none';
-    
-    const gameUrl = `${window.location.origin}${window.location.pathname}?session=${sessionCode}`;
+
+    const gameUrl = buildJoinUrl(sessionCode);
     let qrGenerated = false;
     
     if (typeof QRious !== 'undefined') {
@@ -409,6 +433,97 @@ function renderJoinFallback(container, sessionCode, gameUrl) {
     code.textContent = `or enter code: ${sessionCode}`;
 
     fallback.append(note, link, code);
+}
+
+/**
+ * Wire the host pairing-card "Copy link" affordance for can't-scan users: populate the
+ * visible join-URL element and copy it to the clipboard on click. Uses navigator.clipboard
+ * when available (secure context) and gracefully falls back to selecting the URL text so the
+ * user can copy manually — never throws (mirrors triggerHaptic/trackEvent posture). The copied
+ * URL contains the 6-digit code (it's the join link); that's fine for the clipboard but the
+ * code is NEVER passed to trackEvent.
+ * @param {string} sessionCode - The 6-digit session code.
+ */
+function setupPairingCopyLink(sessionCode) {
+    const gameUrl = buildJoinUrl(sessionCode);
+
+    // Render the URL via textContent/href (never innerHTML) — same XSS-safe pattern as
+    // renderJoinFallback — so the code can never inject markup.
+    const linkEl = document.getElementById('join-link');
+    if (linkEl) {
+        linkEl.href = gameUrl;
+        linkEl.textContent = gameUrl;
+    }
+
+    const btn = document.getElementById('copy-link-btn');
+    if (!btn || btn.dataset.wired === '1') return;
+    btn.dataset.wired = '1';
+
+    const confirmCopied = () => {
+        const original = btn.dataset.label || btn.textContent;
+        btn.dataset.label = original;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            btn.textContent = btn.dataset.label || 'Can\'t scan? Copy link';
+            btn.classList.remove('copied');
+        }, 2000);
+    };
+
+    const selectFallback = () => {
+        // No async clipboard API (insecure context / old browser): select the visible URL
+        // so the user can copy it manually. Best-effort; never throws.
+        try {
+            if (!linkEl) return;
+            const range = document.createRange();
+            range.selectNodeContents(linkEl);
+            const sel = window.getSelection();
+            if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+        } catch (_e) { /* selection is best-effort */ }
+    };
+
+    btn.addEventListener('click', () => {
+        // NOTE: gameUrl carries the code — keep it OUT of the analytics payload.
+        trackEvent('pairing_link_copied');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(gameUrl)
+                .then(confirmCopied)
+                .catch(() => { selectFallback(); confirmCopied(); });
+        } else {
+            selectFallback();
+            confirmCopied();
+        }
+    });
+}
+
+/**
+ * Start the single pairing-timeout nudge: after gameConfig.pairingNudgeMs with no phone
+ * connected, reveal the "still waiting?" nudge and emit pairing_nudge_shown ONCE. The
+ * callback re-checks controllerTracked to avoid racing a phone that connected late. Stashes
+ * the timer id on sessionManager so clearPairingNudge() can cancel it on the connect edge.
+ * @param {'hybrid'|'localStorage'} transport
+ */
+function startPairingNudge(transport) {
+    if (sessionManager.pairingNudgeTimer) return; // single timer per session
+    sessionManager.pairingNudgeTimer = setTimeout(() => {
+        sessionManager.pairingNudgeTimer = null;
+        if (sessionManager.controllerTracked) return; // a phone already connected
+        const nudge = document.getElementById('desktop-pairing-nudge');
+        if (nudge) nudge.classList.remove('hidden');
+        trackEvent('pairing_nudge_shown', { transport: transport });
+    }, gameConfig.pairingNudgeMs);
+}
+
+/**
+ * Cancel the pending pairing-timeout nudge (a phone connected) and hide it if shown.
+ */
+function clearPairingNudge() {
+    if (sessionManager.pairingNudgeTimer) {
+        clearTimeout(sessionManager.pairingNudgeTimer);
+        sessionManager.pairingNudgeTimer = null;
+    }
+    const nudge = document.getElementById('desktop-pairing-nudge');
+    if (nudge) nudge.classList.add('hidden');
 }
 
 /**

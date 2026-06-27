@@ -301,7 +301,10 @@ function playLossFlash(card) {
 function connectToSession(sessionCode) {
     debugLog('🔗 Attempting to connect to session:', sessionCode);
     showConnectionStatus('Connecting...');
-    
+
+    // Fresh attempt: clear the "we saw a remote session doc" flag so a previous
+    // attempt can't make THIS one wrongly suppress the single-device fallback.
+    sessionManager.remoteSessionFound = false;
     sessionManager.connectionRetries = 0;
     attemptConnection(sessionCode);
 }
@@ -331,6 +334,13 @@ async function connectViaRobustHybrid(sessionCode) {
         if (docSnapshot.exists) {
             const sessionData = docSnapshot.data();
             debugLog('✅ Session found in Firestore:', sessionData);
+
+            // A REMOTE session doc was actually read. Record it BEFORE the later
+            // RTDB/Firestore steps that can throw, so the catch can tell "Firebase was
+            // reachable, a later step failed" (honest retryable error — localStorage
+            // can't bridge two devices) apart from "Firebase never came up" (the only
+            // case the same-device localStorage fallback can legitimately serve).
+            sessionManager.remoteSessionFound = true;
 
             // Multiplayer-capable session (every NEW desktop creates these):
             // the whole join/lobby/round journey lives in mp-client.js. The
@@ -409,9 +419,21 @@ async function connectViaRobustHybrid(sessionCode) {
             showConnectionError('Connection trouble — retrying…');
 
             setTimeout(() => attemptConnection(sessionCode), gameConfig.retryDelayMs);
+        } else if (sessionManager.remoteSessionFound) {
+            // The remote session doc DID exist — a later handshake step (RTDB .set,
+            // Firestore update, transient blip) failed. localStorage can never bridge
+            // two physical devices, so DON'T pretend to "try local mode". Tell the user
+            // plainly and reset the counter so the next Connect tap is a clean attempt.
+            debugLog('🔄 Max retries reached after a remote session was found — honest retryable error (no localStorage).');
+            sessionManager.connectionRetries = 0;
+            showConnectionError("Couldn't finish connecting. Check your connection and tap Connect to try again.");
+            trackEvent('controller_connect_failed', { reason: 'post_lookup' });
         } else {
-            debugLog('🔄 Max retries reached, falling back to localStorage...');
-            showConnectionError('Could not connect via Firebase. Trying local mode...');
+            // Firebase was never available to this controller (e.g. waitForFirebaseReady
+            // rejected before the .get()) so we never confirmed a remote doc. This is the
+            // only case where same-device (two-tab) localStorage testing can apply.
+            debugLog('🔄 Max retries reached, Firebase unavailable — retrying locally for same-device testing...');
+            showConnectionError('Couldn\'t reach the game server — retrying locally for same-device testing…');
             connectViaLocalStorage(sessionCode);
         }
     }

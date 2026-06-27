@@ -734,8 +734,13 @@ function showNameEntry(score) {
 }
 
 /**
- * Used by desktop or network logger to show active status
+ * Used by desktop or network logger to show active host pairing status. Writes the
+ * message into the visible #desktop-pairing-status element on the pairing card (so the
+ * "Waiting for your phone…" / "Phone connected ✅" states are actually shown), and keeps
+ * the dev-only debugLog. No-ops cleanly on the controller view (element absent).
  */
 function updateConnectionStatus(status) {
     debugLog('🔗 Connection status:', status);
+    const statusEl = document.getElementById('desktop-pairing-status');
+    if (statusEl) statusEl.textContent = status;
 }

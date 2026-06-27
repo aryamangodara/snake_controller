@@ -417,6 +417,62 @@
     white-space: nowrap;
 }
 
+/* Live host pairing status ("Waiting for your phone…" / "Phone connected ✅"). */
+.pairing-status {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-normal);
+    margin: var(--space-12) 0 0;
+    text-align: center;
+}
+
+/* Can't-scan affordance: Copy-link button + the join URL. */
+.pairing-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-8);
+    margin-top: var(--space-12);
+}
+
+.pairing-copy-btn {
+    color: var(--color-primary);
+    background: transparent;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-bold);
+    padding: var(--space-8) var(--space-16);
+    border-radius: var(--radius-base);
+    border: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.4);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pairing-copy-btn:hover {
+    background: rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.12);
+}
+
+.pairing-copy-btn.copied {
+    color: var(--color-success);
+    border-color: rgba(var(--color-success-rgb, var(--color-teal-500-rgb)), 0.5);
+}
+
+.pairing-copy-url {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+    word-break: break-all;
+    text-align: center;
+    max-width: 100%;
+}
+
+/* Timeout nudge — warning-toned, hidden until pairingNudgeMs elapses with no phone. */
+.pairing-nudge {
+    color: var(--color-warning);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-normal);
+    margin: var(--space-12) 0 0;
+    text-align: center;
+}
+
 .qr-container {
     margin: var(--space-16) 0;
     display: flex;

@@ -224,6 +224,20 @@
                             No camera? Open this site &amp; enter
                             <span id="session-code" class="code-value">123456</span>
                         </p>
+
+                        <!-- Live host pairing status (written by updateConnectionStatus). -->
+                        <p id="desktop-pairing-status" class="pairing-status" aria-live="polite">Waiting for your phone…</p>
+
+                        <!-- Can't-scan affordance: copy the join link (incl. ?session=code) to send to a phone. -->
+                        <div class="pairing-copy">
+                            <button id="copy-link-btn" class="pairing-copy-btn" type="button">Can't scan? Copy link</button>
+                            <a id="join-link" class="pairing-copy-url" href="#" target="_blank" rel="noopener"></a>
+                        </div>
+
+                        <!-- Timeout nudge — hidden until pairingNudgeMs passes with no phone. -->
+                        <p id="desktop-pairing-nudge" class="pairing-nudge hidden" aria-live="polite">
+                            Still waiting? Make sure both devices are online — or copy the link above.
+                        </p>
                     </div>
                 </div>
             </div>
