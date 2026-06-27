@@ -46,6 +46,7 @@ function createInitialGameState() {
         frameCount: 0,
         combo: 0,          // Current eat streak (drives the score multiplier)
         lastFoodTime: 0,   // Timestamp of the last food eaten (for the combo window)
+        milestonesFired: [], // score thresholds already toasted this run (reset each run)
         mode: 'solo',      // 'solo' | 'multi' — every engine branch keys off this
         players: []        // per-player state in multiplayer; inert (empty) in solo
     };

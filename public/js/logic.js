@@ -261,6 +261,55 @@ function resolveWinner(players, justDiedSlots) {
     return { over: true, winnerSlot: winners.length === 1 ? winners[0].slot : null };
 }
 
+/**
+ * Combo-scaled eat-juice parameters — pure, so solo and multiplayer share the exact
+ * same curve by construction. Maps a (capped) combo multiplier to the visual intensity
+ * for spawnFoodBurst() and the screen-shake to fire, if any. A x1 eat returns
+ * intensity 1 + no shake, so the default juice is byte-for-byte unchanged from today.
+ * @param {number} multiplier - the capped combo multiplier (1..maxCombo).
+ * @param {object} config - gameConfig (uses maxCombo, comboJuiceMax, comboShakeThreshold,
+ *   comboShakeMag, comboShakeMs, maxComboFlashMag).
+ * @returns {{intensity:number, shakeMag:number, shakeMs:number, isMax:boolean}}
+ */
+function comboJuice(multiplier, config) {
+    const m = Math.max(1, multiplier);
+    const maxCombo = config.maxCombo || 1;
+    // Linear ramp from 1 (x1) to comboJuiceMax (at maxCombo); clamped either side.
+    const span = Math.max(1, maxCombo - 1);
+    const t = Math.min(1, (m - 1) / span);
+    const intensity = 1 + t * ((config.comboJuiceMax || 1) - 1);
+    const isMax = m >= maxCombo;
+    let shakeMag = 0;
+    let shakeMs = 0;
+    if (m >= (config.comboShakeThreshold || Infinity)) {
+        shakeMag = isMax ? (config.maxComboFlashMag || config.comboShakeMag || 0)
+            : (config.comboShakeMag || 0);
+        shakeMs = config.comboShakeMs || 0;
+    }
+    return { intensity, shakeMag, shakeMs, isMax };
+}
+
+/**
+ * In-run milestone watcher — pure, so both engines share the same crossing logic and
+ * it can be unit-tested. Returns the highest configured milestone the score has now
+ * reached that is NOT already in `firedSet`, or null if none is newly crossed.
+ * @param {number} score - the current score.
+ * @param {Array<number>|Set<number>} firedSet - milestones already toasted this run.
+ * @param {object} config - gameConfig (uses milestones).
+ * @returns {number|null} the newly-crossed milestone, or null.
+ */
+function checkMilestones(score, firedSet, config) {
+    const milestones = (config && config.milestones) || [];
+    const has = (firedSet instanceof Set)
+        ? (v) => firedSet.has(v)
+        : (v) => firedSet.indexOf(v) !== -1;
+    let crossed = null;
+    for (const m of milestones) {
+        if (score >= m && !has(m) && (crossed === null || m > crossed)) crossed = m;
+    }
+    return crossed;
+}
+
 // Expose for Node/Vitest only (no-op in the browser).
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
@@ -277,6 +326,8 @@ if (typeof module !== 'undefined' && module.exports) {
         snakeFromPose,
         followSegments,
         growTail,
-        resolveWinner
+        resolveWinner,
+        comboJuice,
+        checkMilestones
     };
 }

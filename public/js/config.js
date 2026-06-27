@@ -86,6 +86,19 @@ const gameConfig = {
     comboWindowMs: 4500, // Eat again within this window to extend the streak
     maxCombo: 6,         // Cap on the score multiplier
 
+    // Combo-scaled eat juice (pure presentation — never touches balance). A x1 eat
+    // is byte-identical to today (intensity 1, no shake); higher streaks bloom more
+    // particles + a wider ripple, kick a small shake at x3+, and flash at maxCombo.
+    comboJuiceMax: 2.2,        // intensity cap at maxCombo (particle/ripple scale)
+    comboShakeThreshold: 3,    // combo multiplier at/above which a small eat-shake fires
+    comboShakeMag: 3,          // peak px of the x3+ eat shake (vs 9 for the death shake)
+    comboShakeMs: 120,         // duration of the x3+ eat shake (vs 340 for the death shake)
+    maxComboFlashMag: 5,       // peak px of the extra kick at maxCombo (still < death shake)
+
+    // In-run milestone moments: ascending toast + sting the first time the score
+    // crosses each threshold in a run (per-player in multiplayer). Pure additive.
+    milestones: [100, 250, 500, 1000],
+
     // Optimization settings
     joystickThrottleMs: 33, // Limits joystick update frequency (~30Hz for snappier phone input)
     movementUpdateMs: 25,   // Frames per second interval

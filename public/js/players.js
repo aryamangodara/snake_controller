@@ -51,6 +51,7 @@ function createPlayer(slot, name, playerCount) {
         score: 0,
         combo: 0,
         lastFoodTime: 0,
+        milestonesFired: [], // score thresholds this player has toasted this round
         joystickInput: { x: 0, y: 0 },
         alive: true,
         death: null // { cause: 'wall'|'self'|'bite', by: slot|null, at: epochMs }

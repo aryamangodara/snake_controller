@@ -132,12 +132,27 @@ function applyFoodEaten(player) {
     const gained = 10 * multiplier;
     player.score += gained;
 
-    spawnFoodBurst(foodX, foodY, colors.food);
+    // Combo-scaled juice — the SAME logic.comboJuice curve as the solo eat block, so
+    // the two engines never visibly diverge: scaled burst, small shake at x3+, flash
+    // at maxCombo. x1 stays byte-identical to before.
+    const juice = comboJuice(multiplier, gameConfig);
+    spawnFoodBurst(foodX, foodY, colors.food, juice.intensity);
+    if (juice.shakeMag > 0) triggerShake(juice.shakeMag, juice.shakeMs);
     // The pop carries the player's head color so everyone can see WHO scored.
     spawnScorePop(foodX, foodY,
         multiplier > 1 ? `+${gained} x${multiplier}` : `+${gained}`,
         player.colors.head);
     playFoodSound(multiplier);
+
+    // In-run milestone moment, per player: toast in this player's head color + sting,
+    // once per threshold per round (the fired set resets each round via createPlayer).
+    const crossed = checkMilestones(player.score, player.milestonesFired, gameConfig);
+    if (crossed !== null) {
+        player.milestonesFired.push(crossed);
+        spawnScorePop(foodX, foodY - 28, `${crossed}!`, player.colors.head);
+        playMilestoneSound(gameConfig.milestones.indexOf(crossed));
+        trackEvent('milestone_reached', { milestone: crossed, mode: gameState.mode });
+    }
 
     generateFood(aliveSnakes());
     growTail(player.snake, gameConfig);

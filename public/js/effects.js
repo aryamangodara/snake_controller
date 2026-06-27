@@ -20,13 +20,19 @@ const effects = {
  * @param {number} x
  * @param {number} y
  * @param {string} color
+ * @param {number} [intensity=1] - combo-scaled juice multiplier (>= 1). At the default
+ *   of 1 the burst is byte-for-byte identical to before (10 particles, maxR 34);
+ *   higher values emit more + faster particles and a wider ripple. See logic.comboJuice.
  */
-function spawnFoodBurst(x, y, color) {
+function spawnFoodBurst(x, y, color, intensity = 1) {
     const now = Date.now();
-    const count = 10;
+    const scale = Math.max(1, intensity);
+    const count = Math.round(10 * scale);
     for (let i = 0; i < count; i++) {
         const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
-        const speed = 0.06 + Math.random() * 0.10; // px per ms
+        // Base px-per-ms band (0.06..0.16), widened by the intensity so streak bursts
+        // throw debris further. scale === 1 keeps the original band exactly.
+        const speed = (0.06 + Math.random() * 0.10) * scale; // px per ms
         effects.particles.push({
             x, y,
             vx: Math.cos(angle) * speed,
@@ -37,7 +43,7 @@ function spawnFoodBurst(x, y, color) {
             color: color || '#ffcf4d'
         });
     }
-    effects.ripples.push({ x, y, born: now, ttl: 380, maxR: 34, color: color || '#ffcf4d' });
+    effects.ripples.push({ x, y, born: now, ttl: 380, maxR: 34 * scale, color: color || '#ffcf4d' });
 }
 
 /**

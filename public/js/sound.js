@@ -53,6 +53,19 @@ function playFoodSound(step = 1) {
     playTone(freq, 110, 'square', 0.28);
 }
 
+/**
+ * Milestone sting — a bright two-note rising chime when the score crosses a threshold.
+ * Extends the "pitch rises with progress" pattern from playFoodSound: the further into
+ * the milestone list, the higher the base pitch, so 100/250/500/1000 each read a little
+ * more triumphant. Routes through playTone, so it honors the same soundMuted guard.
+ * @param {number} [index=0] - 0-based position of the milestone in gameConfig.milestones.
+ */
+function playMilestoneSound(index = 0) {
+    const base = 740 * Math.pow(1.12, Math.max(0, index)); // climbs per milestone
+    playTone(base, 130, 'triangle', 0.3);
+    setTimeout(() => playTone(base * 1.5, 180, 'triangle', 0.3), 110); // a perfect fifth up
+}
+
 function playCrashSound() {
     playTone(140, 350, 'sawtooth', 0.45);
 }

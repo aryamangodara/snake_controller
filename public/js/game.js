@@ -162,6 +162,7 @@ function startGame() {
     gameState.lastMoveTime = performance.now();
     gameState.combo = 0;
     gameState.lastFoodTime = 0;
+    gameState.milestonesFired = []; // fresh run: no milestone carried over from the last
     resetEffects();
     updateComboDisplay();
 
@@ -318,13 +319,29 @@ function moveSnake() {
         updateScore();
         updateComboDisplay();
 
-        // Juice: particle burst + ripple + floating score at the point of the bite.
-        spawnFoodBurst(foodX, foodY, colors.food);
+        // Combo-scaled juice: a x1 eat is byte-identical to before; higher streaks
+        // bloom more particles + a wider ripple, kick a small shake at x3+, and flash
+        // at maxCombo. The curve is shared with multiplayer via logic.comboJuice.
+        const juice = comboJuice(multiplier, gameConfig);
+        spawnFoodBurst(foodX, foodY, colors.food, juice.intensity);
+        if (juice.shakeMag > 0) triggerShake(juice.shakeMag, juice.shakeMs);
         spawnScorePop(foodX, foodY,
             multiplier > 1 ? `+${gained} x${multiplier}` : `+${gained}`,
             multiplier > 1 ? colors.food : '#ffffff');
 
         playFoodSound(multiplier); // ascending pitch as the streak climbs
+
+        // In-run milestone moment: fire a toast + ascending sting the first time the
+        // score crosses each gameConfig.milestones threshold this run (idempotent —
+        // the threshold is recorded so it never re-fires until the next run resets it).
+        const crossed = checkMilestones(gameState.score, gameState.milestonesFired, gameConfig);
+        if (crossed !== null) {
+            gameState.milestonesFired.push(crossed);
+            spawnScorePop(foodX, foodY - 28, `${crossed}!`, colors.accent);
+            playMilestoneSound(gameConfig.milestones.indexOf(crossed));
+            trackEvent('milestone_reached', { milestone: crossed, mode: gameState.mode });
+        }
+
         sendHapticFeedback('food');
         generateFood();
         addSnakeSegment();

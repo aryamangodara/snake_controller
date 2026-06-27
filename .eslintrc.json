@@ -27,6 +27,8 @@
     "followSegments": "readonly",
     "growTail": "readonly",
     "resolveWinner": "readonly",
+    "comboJuice": "readonly",
+    "checkMilestones": "readonly",
 
     "firebaseConfig": "readonly",
     "app": "readonly",
@@ -89,6 +91,7 @@
     "getAudioContext": "readonly",
     "playTone": "readonly",
     "playFoodSound": "readonly",
+    "playMilestoneSound": "readonly",
     "playCrashSound": "readonly",
     "playStartSound": "readonly",
     "toggleMute": "readonly",
