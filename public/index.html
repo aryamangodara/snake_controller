@@ -130,6 +130,9 @@
                     <button id="leaderboard-btn" class="social-link leaderboard-link" type="button" aria-label="View leaderboard">
                         <i class="fas fa-trophy"></i>
                     </button>
+                    <button id="privacy-link" class="social-link privacy-link" type="button" aria-label="Privacy and data">
+                        <i class="fas fa-shield-halved"></i>
+                    </button>
                 </div>
             </div>
 
@@ -237,6 +240,63 @@
                 <p id="lb-error" class="lb-state hidden">Leaderboard unavailable right now.</p>
             </div>
         </div>
+
+        <!-- Privacy policy modal (reuses the leaderboard-modal pattern; static text, no XSS surface) -->
+        <div id="privacy-modal" class="leaderboard-modal hidden" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+            <div class="leaderboard-panel privacy-panel">
+                <button id="privacy-close" class="lb-close" type="button" aria-label="Close">&times;</button>
+                <h2 id="privacy-title">Privacy &amp; data</h2>
+                <div class="privacy-body">
+                    <p>This game uses <strong>Google Analytics (GA4)</strong> to understand how it is used —
+                    only if you accept. Analytics is <strong>off by default</strong> and never loads until you
+                    click <strong>Accept</strong>.</p>
+
+                    <h3>What is collected (only after you accept)</h3>
+                    <ul>
+                        <li>Page views, session and engagement, approximate (city-level) location with your IP anonymised.</li>
+                        <li>Device, browser and language.</li>
+                        <li>Referrer and <code>utm_*</code> campaign tags from the link you arrived on.</li>
+                        <li>Gameplay events (a game started, a game ended, a score shared, a leaderboard view, etc.).</li>
+                    </ul>
+
+                    <h3>What is never collected</h3>
+                    <ul>
+                        <li>No name, email or other personal information.</li>
+                        <li><strong>Never your 6-digit session code.</strong></li>
+                        <li>No precise location.</li>
+                    </ul>
+
+                    <h3>Cookies</h3>
+                    <p>If you accept, GA4 sets first-party cookies <code>_ga</code> and <code>_ga_G-0DFSB38H21</code>
+                    to count visits and sessions (they expire after up to ~2 years). Declining sets no analytics cookies.</p>
+
+                    <h3>Your choices</h3>
+                    <ul>
+                        <li>Click <strong>Decline</strong> to keep analytics off.</li>
+                        <li>If your browser sends <em>Do Not Track</em> or <em>Global Privacy Control</em>, analytics
+                        stays off automatically and no banner is shown.</li>
+                        <li>Clear this site's data to reset your choice and withdraw consent.</li>
+                        <li>See <a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener">how Google uses data</a>.</li>
+                    </ul>
+
+                    <p class="privacy-note">Playing the game (pairing a phone, the joystick stream, the leaderboard) is
+                    functional data you opt into by playing — it is separate from analytics and is not affected by this choice.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Non-modal analytics consent banner (desktop host only; never blocks play) -->
+        <div id="consent-banner" class="consent-banner hidden" role="region" aria-label="Privacy and analytics">
+            <p class="consent-text">
+                We use Google Analytics to understand how the game is used. No personal data or your session
+                code is collected.
+                <button id="consent-learn" class="consent-link" type="button">Privacy &amp; data</button>
+            </p>
+            <div class="consent-actions">
+                <button id="consent-decline" class="btn consent-btn-secondary" type="button">Decline</button>
+                <button id="consent-accept" class="btn consent-btn-primary" type="button">Accept</button>
+            </div>
+        </div>
     </div>
 
     <!-- Mobile Controller View -->
@@ -318,6 +378,7 @@
     <script src="js/utils.js"></script>
     <script src="js/logic.js"></script>
     <script src="js/config.js"></script>
+    <script src="js/consent.js"></script>
     <script src="js/state.js"></script>
     <script src="js/players.js"></script>
     <script src="js/leaderboard.js"></script>

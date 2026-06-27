@@ -13,15 +13,10 @@ function detectDevice() {
         new URLSearchParams(window.location.search).has('session');
     sessionManager.isDesktop = !isController;
 
-    // Tag the GA4 session with the device role so the two audiences are segmentable.
-    try {
-        if (typeof analytics !== 'undefined' && analytics) {
-            analytics.setUserProperties({
-                device_role: sessionManager.isDesktop ? 'desktop_host' : 'phone_controller'
-            });
-        }
-    } catch (e) { /* ignore */ }
-    
+    // The GA4 device_role user property is set inside enableAnalytics() (config.js) — i.e.
+    // only once the user has consented and analytics actually exists — not unconditionally
+    // here. Setting it before consent would have required the (now consent-gated) handle.
+
     debugLog('Device detected:', sessionManager.isDesktop ? 'Desktop' : 'Mobile');
     
     const desktopView = document.getElementById('desktop-view');

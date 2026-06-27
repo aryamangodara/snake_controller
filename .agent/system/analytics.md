@@ -2,8 +2,24 @@
 
 The game uses **Firebase Analytics (GA4)** to understand the audience and attribute marketing
 campaigns. GA4 property/measurement ID: **`G-0DFSB38H21`** (already in `firebaseConfig`,
-`public/js/config.js`). No cookie-consent banner is shown (owner choice; GA4 anonymizes IPs by
-default).
+`public/js/config.js`).
+
+**Analytics is OPT-IN and consent-gated** (`public/js/consent.js`). GA4 (`firebase.analytics()`)
+is **never** initialized — no `_ga*` cookies, no `gtag` runtime — until the visitor accepts. The
+decision logic (`consentInit()`):
+
+- **Do-Not-Track / GPC honoured:** if `navigator.doNotTrack` / `window.doNotTrack` /
+  `navigator.msDoNotTrack` is on, or `navigator.globalPrivacyControl === true`, analytics never
+  boots and no banner is shown.
+- A returning visitor's choice is persisted in `localStorage['snake_consent']`
+  (`'granted'` | `'denied'`) and the banner shows **once**.
+- The **desktop host** sees a non-modal consent banner (Accept / Decline + a "Privacy & data"
+  link). The **phone controller** never sees it (it arrives mid-join via `?session=`) and stays
+  no-op. A persistent shield "Privacy" button in the header opens the same policy modal after the
+  banner is dismissed.
+- On **Accept** → `enableAnalytics()` (the only `firebase.analytics()` call site) boots GA4 and a
+  single `consent_update` event fires. On **Decline / DNT** → analytics never boots and
+  `trackEvent()` stays a silent no-op.
 
 ## How it's wired
 
@@ -44,6 +60,7 @@ acquisition (referrer + `utm_*`). On top of that we fire custom events:
 | `leaderboard_view` | — | `leaderboard-ui.js` `openLeaderboard()` |
 | `leaderboard_submit` | `score` (number), `rank` (number; 0 = rank unknown) | `game.js` `submitAndShowRank()` |
 | `pwa_install` | `outcome` (`prompted`\|`installed`) | `index.html` install listeners |
+| `consent_update` | `outcome` (`granted`) | `consent.js` `setConsent()` — fires once, only on Accept |
 
 Every event also carries `device_role` (`desktop_host` / `phone_controller`).
 

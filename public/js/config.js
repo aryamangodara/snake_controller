@@ -42,17 +42,52 @@ function initializeFirebase() {
         // Firestore only for session management (Less frequent updates)
         firestore = firebase.firestore();
         firebaseReady = true;
-        // Analytics (GA4). Its own try/catch so an analytics failure (adblock, unsupported
-        // env) never falls into the outer catch and drops gameplay into offline mode.
+        // Analytics (GA4) is NO LONGER booted here. It is an OPT-IN, consent-gated handle:
+        // consentInit() (consent.js) decides whether to call enableAnalytics() now (returning
+        // visitor who accepted), wait for a banner click, or stay off (declined / DNT / GPC).
+        // Wrapped in its own try/catch so a consent-layer failure can never fall into the outer
+        // catch and drop gameplay into offline mode. Guarded on typeof so config.js still boots
+        // even when consent.js is absent (e.g. the jsdom protocol test loads a script subset).
         try {
-            analytics = firebase.analytics();
+            if (typeof consentInit === 'function') consentInit();
         } catch (e) {
-            console.warn('Analytics unavailable:', e);
+            console.warn('Consent init unavailable:', e);
         }
         debugLog('🚀 Firebase initialized: Realtime DB + Firestore hybrid');
     } catch (error) {
         console.warn('Firebase initialization failed:', error);
         debugLog('Running in offline mode with localStorage');
+    }
+}
+
+/**
+ * Boots the GA4 analytics handle — the ONLY place `firebase.analytics()` is ever called.
+ * OPT-IN: invoked exclusively by the consent layer (consent.js) after the user has accepted,
+ * or on load for a returning visitor who previously accepted. Until then `analytics` stays
+ * undefined and `trackEvent()` (utils.js) no-ops, so no GA cookies (`_ga*`) or `gtag` runtime
+ * boot before consent.
+ *
+ * Idempotent (early-returns if already booted) and defensive (no-ops if firebase / the
+ * analytics SDK is unavailable, e.g. offline-fallback mode). Keeps its OWN try/catch so an
+ * analytics failure (ad-block, unsupported env) never throws into the caller — preserving the
+ * load-bearing guarantee that analytics can never drop the app into offline mode.
+ */
+function enableAnalytics() {
+    if (typeof analytics !== 'undefined' && analytics) return; // already booted — don't double-init
+    if (typeof firebase === 'undefined' || !firebase || !firebase.analytics) return;
+    try {
+        analytics = firebase.analytics();
+        // Tag the GA4 session with the device role so the two audiences stay segmentable.
+        // Done here (not unconditionally in main.js) so the property is only ever set once
+        // analytics actually exists — i.e. only after consent.
+        if (analytics && typeof sessionManager !== 'undefined' && sessionManager) {
+            analytics.setUserProperties({
+                device_role: sessionManager.isDesktop ? 'desktop_host' : 'phone_controller'
+            });
+        }
+        debugLog('📊 Analytics enabled (consent granted)');
+    } catch (e) {
+        console.warn('Analytics unavailable:', e);
     }
 }
 
