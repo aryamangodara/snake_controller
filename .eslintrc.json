@@ -208,6 +208,8 @@
     "initializeMobileController": "readonly",
     "setupMobileEventListeners": "readonly",
     "setupJoystickControls": "readonly",
+    "joystickHintDismissed": "writable",
+    "dismissJoystickHint": "readonly",
     "startJoystickDrag": "readonly",
     "getPointerPosition": "readonly",
     "handleJoystickDrag": "readonly",

@@ -253,7 +253,7 @@
             <div class="connection-card">
                 <div class="input-group">
                     <label for="session-input">Enter 6-digit session code:</label>
-                    <input type="text" id="session-input" maxlength="6" placeholder="123456" pattern="[0-9]{6}">
+                    <input type="text" id="session-input" maxlength="6" placeholder="123456" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code">
                 </div>
                 
                 <button id="connect-btn" class="btn btn-connect">Connect to Game</button>
@@ -276,6 +276,10 @@
                     <div id="joystick-base" class="joystick-base">
                         <div id="joystick-handle" class="joystick-handle"></div>
                     </div>
+                    <!-- First-run hint: teaches the analog drag/speed mechanic. Revealed in
+                         showControllerInterface(), dismissed on first drag (pointer-events:none
+                         so it never swallows that drag) or after a short auto-fade timer. -->
+                    <p id="joystick-hint" class="joystick-hint hidden">Drag to steer — push further to go faster</p>
                 </div>
 
                 <!-- Center Control Button -->

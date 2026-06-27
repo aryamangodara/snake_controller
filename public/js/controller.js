@@ -101,7 +101,22 @@ function setupJoystickControls() {
 // JOYSTICK MATH & MECHANICS
 // ==========================================
 
+// First-run hint is dismissed at most once per page load (drag OR auto-fade timer).
+let joystickHintDismissed = false;
+
+/**
+ * Fade out the first-run "drag to steer" hint. Idempotent / once-only, so a drag and the
+ * auto-fade timer can both call it harmlessly. Stateless across page loads by design.
+ */
+function dismissJoystickHint() {
+    if (joystickHintDismissed) return;
+    joystickHintDismissed = true;
+    const hint = document.getElementById('joystick-hint');
+    if (hint) hint.classList.add('dismissed');
+}
+
 function startJoystickDrag(e) {
+    dismissJoystickHint(); // first drag teaches the mechanic — clear the hint
     e.preventDefault();
     joystickState.isDragging = true;
     joystickState.handleElement.classList.add('dragging');
@@ -173,6 +188,7 @@ function endJoystickDrag(e) {
 
 function moveJoystickToPosition(e) {
     if (joystickState.isDragging) return;
+    dismissJoystickHint(); // tap-to-snap counts as a first drag too
     e.preventDefault();
     
     const rect = joystickState.baseElement.getBoundingClientRect();
@@ -301,8 +317,9 @@ function attemptConnection(sessionCode) {
 
 async function connectViaRobustHybrid(sessionCode) {
     try {
+        // Attempt count is dev-only telemetry — keep it in debugLog, NOT in user-facing copy.
         debugLog(`🔥 Attempting hybrid connection (attempt ${sessionManager.connectionRetries + 1}/${gameConfig.connectionRetries})...`);
-        showConnectionStatus(`Connecting to game... (${sessionManager.connectionRetries + 1}/${gameConfig.connectionRetries})`);
+        showConnectionStatus('Connecting…');
         
         await waitForFirebaseReady();
         
@@ -387,9 +404,10 @@ async function connectViaRobustHybrid(sessionCode) {
 
         sessionManager.connectionRetries++;
         if (sessionManager.connectionRetries < gameConfig.connectionRetries) {
-            debugLog(`🔄 Retrying connection in ${gameConfig.retryDelayMs/1000} seconds...`);
-            showConnectionError(`Connection failed. Retrying... (${sessionManager.connectionRetries}/${gameConfig.connectionRetries})`);
-            
+            // Retry math is dev-only — route the counts to debugLog, keep the user copy generic.
+            debugLog(`🔄 Retrying connection in ${gameConfig.retryDelayMs/1000}s (attempt ${sessionManager.connectionRetries}/${gameConfig.connectionRetries})...`);
+            showConnectionError('Connection trouble — retrying…');
+
             setTimeout(() => attemptConnection(sessionCode), gameConfig.retryDelayMs);
         } else {
             debugLog('🔄 Max retries reached, falling back to localStorage...');
@@ -442,34 +460,44 @@ function connectViaLocalStorage(sessionCode) {
 function showControllerInterface() {
     const connectionForm = document.getElementById('connection-form');
     const controllerInterface = document.getElementById('controller-interface');
-    
+
     if (connectionForm) connectionForm.style.display = 'none';
     if (controllerInterface) controllerInterface.style.display = 'block';
+
+    // Reveal the first-run joystick hint now the stick is on screen. Auto-fade after a few
+    // seconds so it never lingers for a player who reads, then presses ▶ instead of dragging.
+    const hint = document.getElementById('joystick-hint');
+    if (hint && !joystickHintDismissed) {
+        hint.classList.remove('hidden');
+        setTimeout(dismissJoystickHint, 6000);
+    }
 }
 
 /**
- * Writes a status message into the mobile connection-status element.
+ * Writes a status message into the mobile connection-status element and colors it from a
+ * brand token via a CSS class (no inline hex), so it stays on-brand in light AND dark mode.
  * @param {string} message - Text to display.
- * @param {string} color - CSS color for the message.
+ * @param {'success'|'error'|'info'} variant - Which semantic token class to apply.
  */
-function setConnectionStatus(message, color) {
+function setConnectionStatus(message, variant) {
     const statusElement = document.getElementById('mobile-connection-status');
     if (statusElement) {
         statusElement.textContent = message;
-        statusElement.style.color = color;
+        statusElement.classList.remove('is-success', 'is-error', 'is-info');
+        statusElement.classList.add('is-' + variant);
     }
 }
 
 function showConnectionSuccess(message = 'Connected! Snake moves continuously!') {
-    setConnectionStatus(message, '#00ff00'); // green
+    setConnectionStatus(message, 'success');
 }
 
 function showConnectionError(message) {
-    setConnectionStatus(message, '#ff1493'); // pink
+    setConnectionStatus(message, 'error');
 }
 
 function showConnectionStatus(message) {
-    setConnectionStatus(message, '#ff6b35'); // orange
+    setConnectionStatus(message, 'info');
 }
 
 function updateCenterButtonIcon(currentState) {
