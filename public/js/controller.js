@@ -374,7 +374,7 @@ async function connectViaRobustHybrid(sessionCode) {
             await sessionManager.realtimeRef.set({
                 connected: true,
                 joystick: { x: 0, y: 0 },
-                timestamp: firebase.database.ServerValue.TIMESTAMP
+                timestamp: Date.now()
             });
             debugLog('✅ Realtime Database connected for joystick input');
             
@@ -563,21 +563,39 @@ function updateMobileGameOver(gs) {
  */
 function sendJoystickInput(x, y) {
     if (!sessionManager.connectedSession) return;
-    
+
+    // Change-gate: a held-steady stick (Δ < joystickEpsilon) re-sends nothing, so RTDB/
+    // localStorage writes collapse toward zero while the stick is parked. The (0,0)
+    // release is always allowed through (gated only against a duplicate zero) so the
+    // snake reliably coasts. Applies to BOTH transports — this is the single send path.
+    if (!shouldSendJoystick(x, y, joystickState.lastSentX, joystickState.lastSentY, gameConfig.joystickEpsilon)) {
+        return;
+    }
+
     const joystickInput = { x, y };
-    
+    // Client stamp (Date.now()) instead of the server-resolved sentinel: the host only
+    // compares each source's stamp against that SAME source's previous stamp (never
+    // cross-device), so no server round-trip is needed for ordering.
+    const stamp = Date.now();
+
     if (sessionManager.connectionType === 'hybrid' && sessionManager.realtimeRef) {
         // Realtime DB avoids throttling limits per second vs firestore
         sessionManager.realtimeRef.update({
             joystick: joystickInput,
-            timestamp: firebase.database.ServerValue.TIMESTAMP
+            timestamp: stamp
         }).catch(error => console.error('Error sending joystick input:', error));
     } else if (sessionManager.connectionType === 'localStorage') {
         localStorage.setItem(`session_${sessionManager.connectedSession}_joystick`, JSON.stringify({
             joystick: joystickInput,
-            timestamp: Date.now()
+            timestamp: stamp
         }));
+    } else {
+        return; // no transport — don't record this as sent
     }
+
+    // Only update the change-gate reference when a write actually went out.
+    joystickState.lastSentX = x;
+    joystickState.lastSentY = y;
 }
 
 /**

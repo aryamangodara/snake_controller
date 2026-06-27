@@ -136,7 +136,7 @@ async function mpTryJoin(code) {
         await sessionManager.realtimeRef.set({
             connected: true,
             joystick: { x: 0, y: 0 },
-            timestamp: firebase.database.ServerValue.TIMESTAMP
+            timestamp: Date.now()
         });
         sessionManager.realtimeRef.onDisconnect().remove();
 

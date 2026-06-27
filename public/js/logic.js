@@ -145,6 +145,62 @@ function joystickToControl(input, baseSpeed, config) {
 }
 
 /**
+ * Change-gate for the phone's joystick stream: true if the new vector differs from
+ * the last SENT vector by at least `epsilon`, so a held-steady stick stops re-sending.
+ * The `(0,0)` release is always allowed through (gated only against re-sending a zero
+ * we already sent) so "stick centered" transmits exactly once and the snake coasts.
+ * Seed lastX/lastY to null (or NaN) so the very first send always goes.
+ * @param {number} x - new normalized x.
+ * @param {number} y - new normalized y.
+ * @param {(number|null)} lastX - last SENT x (null = nothing sent yet).
+ * @param {(number|null)} lastY - last SENT y (null = nothing sent yet).
+ * @param {number} epsilon - min |Δ vector| before a re-send (gameConfig.joystickEpsilon).
+ * @returns {boolean}
+ */
+function shouldSendJoystick(x, y, lastX, lastY, epsilon) {
+    // First send (no prior value) always goes.
+    if (lastX === null || lastY === null || lastX === undefined || lastY === undefined) {
+        return true;
+    }
+    const dx = x - lastX;
+    const dy = y - lastY;
+    // Release-to-center: send the zero once, but never re-send a zero we already sent.
+    if (x === 0 && y === 0) {
+        return lastX !== 0 || lastY !== 0;
+    }
+    return Math.hypot(dx, dy) >= epsilon;
+}
+
+/**
+ * Host-side monotonic ordering guard: true if `incomingTs` is strictly newer than the
+ * last-applied `lastTs` for that SAME source, so a late older packet can't overwrite a
+ * newer heading. A missing/non-numeric stamp (legacy cached phones) is treated as
+ * "always newer" so old clients keep working — degrade soft.
+ * @param {*} incomingTs - the packet's client Date.now() stamp.
+ * @param {number} lastTs - the last-applied stamp for this source (0 if none yet).
+ * @returns {boolean}
+ */
+function isNewerStamp(incomingTs, lastTs) {
+    if (typeof incomingTs !== 'number' || !isFinite(incomingTs)) return true;
+    return incomingTs > (lastTs || 0);
+}
+
+/**
+ * Host-side staleness check: true if the most recent input for a source is older than
+ * `staleMs`, signalling a radio stall. The caller then relaxes targetDirection toward
+ * the current heading so the snake coasts straight instead of grinding its last turn.
+ * A `lastTs` of 0/falsy (no input yet) is NOT stale (nothing to coast from).
+ * @param {number} now - Date.now().
+ * @param {number} lastTs - when this source's last input was applied.
+ * @param {number} staleMs - gameConfig.inputStaleMs.
+ * @returns {boolean}
+ */
+function isInputStale(now, lastTs, staleMs) {
+    if (!lastTs) return false;
+    return now - lastTs > staleMs;
+}
+
+/**
  * Spawn pose for one of N players: heads sit on a ring of radius 150 around the
  * board center, facing radially OUTWARD (away from each other), bodies extending
  * back toward the center. A 1-player game keeps the classic solo pose (center,
@@ -322,6 +378,9 @@ if (typeof module !== 'undefined' && module.exports) {
         hitsSelf,
         eatsFood,
         joystickToControl,
+        shouldSendJoystick,
+        isNewerStamp,
+        isInputStale,
         spawnPose,
         snakeFromPose,
         followSegments,

@@ -158,6 +158,7 @@ function startGame() {
     gameState.currentSpeed = gameConfig.baseSpeed;
     gameState.joystickInput = { x: 0, y: 0 };
     gameState.frameCount = 0;
+    sessionManager.lastJoystickUpdate = 0; // fresh input-ordering/coast baseline for this run
     gameState.lastUpdateTime = performance.now();
     gameState.lastMoveTime = performance.now();
     gameState.combo = 0;
@@ -187,6 +188,7 @@ function restartGame() {
         lastMoveTime: performance.now(),
         currentState: GameState.PLAYING
     });
+    sessionManager.lastJoystickUpdate = 0; // fresh input-ordering/coast baseline for this run
 
     updateScore();
     resetEffects();
@@ -256,6 +258,15 @@ const MAX_FRAME_STEP = 3;
  * @param {number} deltaTime - ms elapsed since the previous frame.
  */
 function updateSnakeDirection(deltaTime) {
+    // Staleness coast: if the phone's input has gone quiet for longer than
+    // inputStaleMs (a radio stall), relax the TARGET toward the current heading so the
+    // snake holds its line instead of grinding its last turn. Only neutralizes the turn
+    // target — never moves the head or changes currentSpeed. Keyboard play is untouched
+    // (lastJoystickUpdate stays 0, and isInputStale is false when there's no input yet).
+    if (isInputStale(Date.now(), sessionManager.lastJoystickUpdate, gameConfig.inputStaleMs)) {
+        gameState.targetDirection = gameState.direction;
+    }
+
     const frameFactor = Math.min(deltaTime / TARGET_FRAME_MS, MAX_FRAME_STEP);
     const turnStep = speedToTurnStep(
         gameConfig.turnSpeed,

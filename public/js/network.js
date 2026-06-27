@@ -113,7 +113,7 @@ async function setupRobustHybridSession(sessionCode) {
         await sessionManager.realtimeRef.set({
             connected: false,
             joystick: { x: 0, y: 0 },
-            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            timestamp: Date.now(),
             initialized: true
         });
         debugLog('✅ Realtime Database path initialized');
@@ -129,7 +129,7 @@ async function setupRobustHybridSession(sessionCode) {
             const controllerData = snapshot.val();
             if (controllerData && controllerData.connected) {
                 // Legacy flat shape: one phone driving the solo snake.
-                handleJoystickInputFromMobile(controllerData.joystick || { x: 0, y: 0 });
+                handleJoystickInputFromMobile(controllerData.joystick || { x: 0, y: 0 }, controllerData.timestamp);
                 // Fire once per session — this listener re-runs on every joystick
                 // update (~30Hz), so anything not per-frame belongs in this guard.
                 if (!sessionManager.controllerTracked) {
@@ -229,7 +229,7 @@ function setupLocalStorageSession(sessionCode) {
             if (e.key === `session_${code}_joystick`) {
                 const data = safeParse(e.newValue, {});
                 if (data.joystick) {
-                    handleJoystickInputFromMobile(data.joystick);
+                    handleJoystickInputFromMobile(data.joystick, data.timestamp);
                     updateConnectionStatus('Mobile controller connected (localStorage) ✅');
                 }
             } else if (e.key === `session_${code}_action`) {
@@ -331,10 +331,18 @@ function renderJoinFallback(container, sessionCode, gameUrl) {
 }
 
 /**
- * Updates joystick parameters locally from mobile pushes
+ * Updates joystick parameters locally from mobile pushes (solo path).
+ * @param {{x:number,y:number}} joystickInput - the normalized vector.
+ * @param {number} [ts] - the packet's client Date.now() stamp, for the monotonic
+ *   ordering guard. Missing/non-numeric (legacy phones) is treated as "always newer".
  */
-function handleJoystickInputFromMobile(joystickInput) {
+function handleJoystickInputFromMobile(joystickInput, ts) {
     if (gameState.currentState !== GameState.PLAYING) return;
+
+    // Drop out-of-order packets: a late older packet must not overwrite a newer
+    // heading. Compared per-source against this same source's previous stamp only.
+    if (!isNewerStamp(ts, sessionManager.lastJoystickUpdate)) return;
+    if (typeof ts === 'number' && isFinite(ts)) sessionManager.lastJoystickUpdate = ts;
 
     gameState.joystickInput = joystickInput;
 

@@ -75,6 +75,7 @@ let mpSession = {
     enabled: false,
     live: new Set(),   // slots with a live RTDB controller child
     inputs: {},        // slot -> last joystick {x, y}
+    stamps: {},        // slot -> last-applied client Date.now() stamp (monotonic ordering + staleness coast)
     roster: {},        // last-seen players map from the session doc
     defeated: []       // elimination order accumulated for the results write
 };
@@ -99,5 +100,7 @@ let joystickState = {
     handleElement: null,
     baseRect: null,
     maxDistance: 0,
-    lastInputTime: 0
+    lastInputTime: 0,
+    lastSentX: null,  // last {x,y} actually written downstream — change-gate ref (null = nothing sent yet)
+    lastSentY: null
 };

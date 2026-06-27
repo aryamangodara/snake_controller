@@ -51,6 +51,7 @@ function mpStartRound() {
 
     const roster = slots.map((s) => ({ slot: s, name: mpSession.roster[s].name || 'Player ' + s.slice(1) }));
     mpSession.defeated = [];
+    mpSession.stamps = {}; // fresh per-round ordering baseline; first input of the round always applies
     startMultiplayerGame(roster);
     mpWriteRoundStart(slots);
 }
@@ -165,12 +166,22 @@ function mpHandleControllerNode(node) {
         const c = node ? node[slot] : null;
         const wasLive = mpSession.live.has(slot);
         if (c && c.connected) {
-            mpSession.inputs[slot] = c.joystick || { x: 0, y: 0 };
-            if (gameState.mode === 'multi') {
-                applyPlayerJoystick(slot, mpSession.inputs[slot]);
-            } else if (gameState.currentState === GameState.PLAYING) {
-                // 1-player round: the lone phone drives the classic solo snake.
-                handleJoystickInputFromMobile(mpSession.inputs[slot]);
+            // Out-of-order drop: only apply this slot's input when its client stamp is
+            // strictly newer than the last we applied for THIS slot (per-source compare).
+            // A missing/legacy stamp is treated as "always newer" so old phones still work.
+            const fresh = isNewerStamp(c.timestamp, mpSession.stamps[slot]);
+            if (fresh) {
+                if (typeof c.timestamp === 'number' && isFinite(c.timestamp)) {
+                    mpSession.stamps[slot] = c.timestamp;
+                }
+                mpSession.inputs[slot] = c.joystick || { x: 0, y: 0 };
+                if (gameState.mode === 'multi') {
+                    applyPlayerJoystick(slot, mpSession.inputs[slot]);
+                } else if (gameState.currentState === GameState.PLAYING) {
+                    // 1-player round: the lone phone drives the classic solo snake.
+                    // Pass the stamp so the solo monotonic guard + coast see fresh input.
+                    handleJoystickInputFromMobile(mpSession.inputs[slot], c.timestamp);
+                }
             }
             if (!wasLive) {
                 mpSession.live.add(slot);

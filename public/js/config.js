@@ -101,6 +101,8 @@ const gameConfig = {
 
     // Optimization settings
     joystickThrottleMs: 33, // Limits joystick update frequency (~30Hz for snappier phone input)
+    joystickEpsilon: 0.04,  // Min |Δ vector| before the phone re-sends (held stick → ~0 writes); small so fine analog steering still registers
+    inputStaleMs: 400,      // Host: after this input gap, relax targetDirection toward heading so a radio stall coasts straight, not stuck-turning
     movementUpdateMs: 25,   // Frames per second interval
     
     // Connection settings

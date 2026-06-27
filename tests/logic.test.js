@@ -11,6 +11,9 @@ const {
     hitsSelf,
     eatsFood,
     joystickToControl,
+    shouldSendJoystick,
+    isNewerStamp,
+    isInputStale,
     spawnPose,
     snakeFromPose,
     followSegments,
@@ -186,6 +189,74 @@ describe('joystickToControl', () => {
     it('clamps the speed boost at magnitude 1', () => {
         const big = joystickToControl({ x: 3, y: 4 }, 2, config); // magnitude 5
         expect(big.speed).toBeCloseTo(2 + config.maxSpeedBoost);
+    });
+});
+
+describe('shouldSendJoystick (change-gate)', () => {
+    const EPS = 0.04;
+
+    it('always sends the first vector (no prior value)', () => {
+        expect(shouldSendJoystick(0.5, 0.5, null, null, EPS)).toBe(true);
+        expect(shouldSendJoystick(0.5, 0.5, undefined, undefined, EPS)).toBe(true);
+    });
+
+    it('drops an unchanged held vector', () => {
+        expect(shouldSendJoystick(0.5, 0.5, 0.5, 0.5, EPS)).toBe(false);
+    });
+
+    it('drops a sub-epsilon nudge but sends an at/above-epsilon move', () => {
+        // Δ = 0.02 (< epsilon) → dropped
+        expect(shouldSendJoystick(0.52, 0.5, 0.5, 0.5, EPS)).toBe(false);
+        // Δ = 0.04 (== epsilon) → sent
+        expect(shouldSendJoystick(0.54, 0.5, 0.5, 0.5, EPS)).toBe(true);
+        // Δ well above epsilon → sent
+        expect(shouldSendJoystick(0.8, 0.5, 0.5, 0.5, EPS)).toBe(true);
+    });
+
+    it('always sends a (0,0) release after a non-zero, but only once', () => {
+        // release after a non-zero vector → sent even though Δ may be tiny in one axis
+        expect(shouldSendJoystick(0, 0, 0.5, 0.5, EPS)).toBe(true);
+        // re-sending a zero we already sent → dropped
+        expect(shouldSendJoystick(0, 0, 0, 0, EPS)).toBe(false);
+    });
+});
+
+describe('isNewerStamp (monotonic ordering guard)', () => {
+    it('accepts a strictly newer stamp', () => {
+        expect(isNewerStamp(200, 100)).toBe(true);
+    });
+
+    it('rejects an equal or older stamp (out-of-order packet)', () => {
+        expect(isNewerStamp(100, 100)).toBe(false);
+        expect(isNewerStamp(50, 100)).toBe(false);
+    });
+
+    it('treats a missing/non-finite stamp as always-newer (legacy phones)', () => {
+        expect(isNewerStamp(undefined, 100)).toBe(true);
+        expect(isNewerStamp(null, 100)).toBe(true);
+        expect(isNewerStamp(NaN, 100)).toBe(true);
+        expect(isNewerStamp('x', 100)).toBe(true);
+    });
+
+    it('accepts any first stamp when none applied yet (lastTs 0)', () => {
+        expect(isNewerStamp(1, 0)).toBe(true);
+    });
+});
+
+describe('isInputStale (staleness coast)', () => {
+    const STALE = 400;
+
+    it('is not stale when no input has arrived yet (lastTs 0)', () => {
+        expect(isInputStale(1000, 0, STALE)).toBe(false);
+    });
+
+    it('is not stale within the window', () => {
+        expect(isInputStale(1300, 1000, STALE)).toBe(false); // gap 300 < 400
+        expect(isInputStale(1400, 1000, STALE)).toBe(false); // gap 400 == 400 (boundary, not yet stale)
+    });
+
+    it('is stale past the window', () => {
+        expect(isInputStale(1401, 1000, STALE)).toBe(true); // gap 401 > 400
     });
 });
 

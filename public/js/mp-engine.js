@@ -59,6 +59,16 @@ function updateMultiplayerFrame(currentTime, deltaTime, moveDeltaTime) {
  * (Solo passes the constant gameConfig.baseSpeed as the reference speed; so do we.)
  */
 function updatePlayerDirection(player, frameFactor) {
+    // Staleness coast: if this slot's phone has gone quiet past inputStaleMs (a radio
+    // stall), relax the TARGET toward the current heading so the snake holds its line
+    // rather than grinding its last turn into a wall. Only neutralizes the turn target —
+    // never moves the head or changes currentSpeed. mpSession.stamps[slot] is the
+    // last-applied input time (0 before any input → not stale, so spawn pose is kept).
+    const lastTs = (typeof mpSession !== 'undefined') ? mpSession.stamps[player.slot] : 0;
+    if (isInputStale(Date.now(), lastTs, gameConfig.inputStaleMs)) {
+        player.targetDirection = player.direction;
+    }
+
     const turnStep = speedToTurnStep(
         gameConfig.turnSpeed, player.currentSpeed, gameConfig.baseSpeed,
         frameFactor, gameConfig.maxTurnSpeedFactor);
