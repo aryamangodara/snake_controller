@@ -8,9 +8,12 @@
 // gameState at click time. Loaded after game.js (needs restartGame) and
 // leaderboard.js (getHighScore); kept separate so game.js stays small.
 
-/** Base game URL to share (no session param). */
+/** Base game URL to share, tagged for attribution (no session param; utm_* is ignored
+ *  by the ?session= deep-link parse, which keys only on `session`). */
 function shareUrl() {
-    return `${location.origin}${location.pathname}`;
+    const base = `${location.origin}${location.pathname}`;
+    const params = new URLSearchParams({ utm_source: 'share', utm_medium: 'social' });
+    return `${base}?${params.toString()}`;
 }
 
 // Multiplayer share context, set by mp-ui.js when a round's results arrive:
