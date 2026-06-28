@@ -150,6 +150,18 @@ const gameConfig = {
     actionDebounceMs: 400, // Client: ignore a REPEAT of the same action (start/restart) within this window
     actionIgnoreMs: 400,   // Host: ignore a repeated action for the same slot within this window (idempotency)
 
+    // Multiplayer presence / host-resilience (M12). All advisory, never a security boundary.
+    rosterReapMs: 8000,    // Host: reap a roster slot whose RTDB child has never been (or is no longer) live
+                           // for this long while NOT in PLAYING — closes the claim→live "ghost roster" gap
+                           // (must comfortably exceed the claim→set round-trip so a slow-but-healthy phone
+                           // mid-handshake is never false-evicted).
+    rosterReapSweepMs: 3000, // Host: how often the reconciliation sweep runs.
+    hostStaleMs: 12000,    // Phone: during PLAYING, if no fresh Firestore snapshot (host stamps lastActivity
+                           // on every state write) for this long, surface a "host disconnected" advisory.
+                           // Set well above the longest expected healthy write gap so a quiet-but-alive
+                           // round never false-flags; it is purely advisory and self-heals on the next snapshot.
+    hostStaleCheckMs: 2000, // Phone: how often the host-staleness watchdog checks.
+
     // Multiplayer. THE single knob for player capacity: slots, colors, spawn
     // layout, lobby UI, and the claim flow all derive from it (players.js /
     // mp-*.js), and the deployed security rules already accept p1–p6 — so

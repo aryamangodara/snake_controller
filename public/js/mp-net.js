@@ -157,6 +157,16 @@ function mpHandleDocSnapshot(doc) {
     if (d.mode !== 'multi') return;
     mpSession.enabled = true;
     mpSession.roster = d.players || {};
+    // Seed the reap clock for any roster slot we have NOT yet seen live, so a slot that
+    // committed its Firestore entry but never brought up an RTDB child (the claim→live drop,
+    // M12 defect (a)) starts aging toward reconciliation from when we first observed it —
+    // not from 0 (which would reap instantly) and not never (the ghost-forever bug).
+    for (const slot of PLAYER_SLOTS) {
+        if (mpSession.roster[slot] && !mpSession.live.has(slot) && mpSession.seenAt[slot] == null) {
+            mpSession.seenAt[slot] = Date.now();
+        }
+    }
+    mpStartRosterReconcile(); // idempotent; arms the ghost-roster sweep once the session is live
     mpUiHook('renderMpLobby');
 
     const actions = d.gameActions || {};
@@ -206,6 +216,9 @@ function mpHandleControllerNode(node) {
 function mpHandleControllerChild(slot, c) {
     const wasLive = mpSession.live.has(slot);
     if (c && c.connected) {
+        // Liveness clock for the reconciliation sweep: a live child is "seen now", so its
+        // roster entry is never a ghost (M12 defect (a) backstop).
+        mpSession.seenAt[slot] = Date.now();
         // Out-of-order drop: only apply this slot's input when its client stamp is
         // strictly newer than the last we applied for THIS slot (per-source compare).
         // A missing/legacy stamp is treated as "always newer" so old phones still work.
@@ -253,11 +266,79 @@ function mpOnControllerGone(slot) {
 /** A slot's RTDB child (re)appeared. */
 function mpOnControllerLive(slot) {
     debugLog('📶 controller live:', slot);
+    mpSession.seenAt[slot] = Date.now();
     const entry = mpSession.roster[slot];
     if (entry && entry.connected === false) {
-        mpDocRef().update({ ['players.' + slot + '.connected']: true }).catch(() => {});
+        // Alive-aware reconnect (M12 defect (b)): mid-round, an ALREADY-ELIMINATED player's
+        // child reappearing must NOT resurrect them as connected/active. The snake already
+        // coasted and died (mpOnControllerGone), so we leave connected:false — the phone falls
+        // into the queued/spectator path on its next snapshot. The gate is ARENA-ONLY
+        // (gameState.mode === 'multi'): a 1-player solo round never runs the elimination roster
+        // (its p1.alive stays false because mpWriteRoundStart is skipped), so gating on mode keeps
+        // the lone solo phone's reconnect restoring connected exactly as before (no solo regression).
+        // Outside PLAYING (lobby / between rounds) there is no live snake to protect either.
+        const blockReconnect = gameState.mode === 'multi' &&
+            gameState.currentState === GameState.PLAYING &&
+            entry.alive === false;
+        if (blockReconnect) {
+            debugLog('🚫 reconnect blocked for eliminated slot:', slot);
+            trackEvent('mp_reconnect_blocked', { slot: parseInt(slot.slice(1), 10) });
+        } else {
+            mpDocRef().update({ ['players.' + slot + '.connected']: true }).catch(() => {});
+        }
     }
     trackEvent('mp_lobby_join', { slot: parseInt(slot.slice(1), 10), players: mpRosterSlots().length });
+}
+
+/**
+ * Host roster reconciliation (M12 defect (a) backstop). Reaps a Firestore roster entry that
+ * has NO live RTDB child for gameConfig.rosterReapMs — the ghost left by a phone that committed
+ * its roster write but dropped before (or without) its slot child ever going live, so no
+ * onDisconnect and no child_removed will ever reap it. M4's per-child liveness (mpSession.live)
+ * is the truth source: a slot that IS live is never reaped, and a slot's seenAt is refreshed
+ * whenever its child is live (mpHandleControllerChild / mpOnControllerLive).
+ *
+ * Mirrors the existing lobby-only reap (mpOnControllerGone): only runs OUTSIDE PLAYING, so an
+ * in-round disconnect still coasts-and-dies naturally rather than being reaped mid-game.
+ */
+function mpReconcileRoster() {
+    if (!mpSession.enabled) return;
+    if (gameState.currentState === GameState.PLAYING) return; // never reap mid-round
+    const now = Date.now();
+    let reaped = 0;
+    for (const slot of PLAYER_SLOTS) {
+        if (!mpSession.roster[slot]) continue;      // no roster entry — nothing to reap
+        if (mpSession.live.has(slot)) continue;     // live child present — NEVER reap a healthy phone
+        const seen = mpSession.seenAt[slot];
+        if (seen == null) { mpSession.seenAt[slot] = now; continue; } // just observed — start its clock
+        if (now - seen <= gameConfig.rosterReapMs) continue;          // still inside grace
+
+        // Ghost: roster entry with no live child past the grace window. Reap it (same write the
+        // lobby-gone path uses) and forget its clock so a future rejoin starts fresh.
+        delete mpSession.seenAt[slot];
+        mpDocRef().update({
+            ['players.' + slot]: firebase.firestore.FieldValue.delete(),
+            lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+        }).catch(() => {});
+        delete mpSession.roster[slot]; // optimistic local prune so the count is right immediately
+        reaped++;
+        debugLog('🧹 reaped ghost roster slot:', slot);
+    }
+    if (reaped) {
+        mpUiHook('renderMpLobby');
+        // Distinguish ghost reaps from genuine leaves (mp_lobby_leave) for the funnel.
+        trackEvent('mp_ghost_reaped', { players: mpRosterSlots().length });
+    }
+}
+
+/**
+ * Arm the roster reconciliation sweep exactly once per host session. Guarded against
+ * double-start (mirrors desktopStorageListenerAttached). The handle lives on mpSession so
+ * beforeunload (network.js) can tear it down — no interval leak.
+ */
+function mpStartRosterReconcile() {
+    if (mpSession.reconcileTimer) return; // single sweep per session
+    mpSession.reconcileTimer = setInterval(mpReconcileRoster, gameConfig.rosterReapSweepMs);
 }
 
 /** @returns the live session doc ref. */

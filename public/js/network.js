@@ -726,6 +726,18 @@ window.addEventListener('beforeunload', function() {
         sessionManager.realtimeRef.off();
     }
 
+    // Tear down the host roster reconciliation sweep (M12) so its interval never leaks.
+    if (typeof mpSession !== 'undefined' && mpSession && mpSession.reconcileTimer) {
+        clearInterval(mpSession.reconcileTimer);
+        mpSession.reconcileTimer = null;
+    }
+    // Tear down the phone host-staleness watchdog (M12) too — a controller tab unloading
+    // must not leave its interval running.
+    if (typeof mpClient !== 'undefined' && mpClient && mpClient.hostWatchTimer) {
+        clearInterval(mpClient.hostWatchTimer);
+        mpClient.hostWatchTimer = null;
+    }
+
     // Only the desktop host owns the session lifecycle. Remove the session on exit
     // so abandoned sessions don't accumulate in Firestore / Realtime DB. These are
     // best-effort (the browser may cut the request short); onDisconnect().remove()

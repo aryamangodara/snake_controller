@@ -115,6 +115,34 @@ function mpPhoneSnapshot(doc) {
         return;
     }
 
+    // Host-staleness watchdog (M12 defect (c)): record the freshest host write time and run
+    // the watchdog only while PLAYING. A fresh snapshot here also clears any stale flag.
+    mpClient.lastHostActivityAt = Date.now();
+    mpClientClearHostStale();
+    if (st === GameState.PLAYING) mpClientStartHostWatch();
+    else mpClientStopHostWatch();
+
+    // Alive-aware reconnect (M12 defect (b)): an eliminated player who reconnects mid-round
+    // must NOT be presented as an active participant. The host already keeps connected:false
+    // for a dead snake; here the phone shows the queued/spectator UI rather than a live
+    // joystick. waiting drives the same path as queueing behind a round.
+    //
+    // ARENA-ONLY: a 1-player solo round never flips its roster `alive` to true (mpWriteRoundStart
+    // is host-side skipped for 1 player), so me.alive stays false for the WHOLE solo round. Gating
+    // on joinedCount >= 2 means the lone solo phone is never mis-shown as a spectator during its
+    // own live round — only a genuinely-eliminated arena player is queued.
+    const joinedCount = d.players ? PLAYER_SLOTS.filter((s) => d.players[s]).length : 0;
+    const isArenaRound = joinedCount >= 2;
+    if (st === GameState.PLAYING && isArenaRound && me.alive === false) {
+        if (!mpClient.waiting) {
+            mpClient.waiting = true;
+            if (typeof mpUiPhoneQueued === 'function') mpUiPhoneQueued();
+        }
+    } else if (st !== GameState.PLAYING) {
+        // Lobby / game-over: a queued spectator is released for the next round.
+        mpClient.waiting = false;
+    }
+
     if (typeof mpUiPhoneUpdate === 'function') mpUiPhoneUpdate(d, mpClient.slot);
     updateCenterButtonIcon(st);
     syncedGameState = st;
@@ -133,12 +161,16 @@ async function mpTryJoin(code) {
         mpClient.slot = slot;
 
         sessionManager.realtimeRef = database.ref('controllers/' + code + '/' + slot);
+        // Arm the server-side reaper FIRST (atomic-ish join). onDisconnect() registers the
+        // remove independently of — and BEFORE — the data write, so a drop in the
+        // claim→live window (set() not yet reached/resolved) is still reaped server-side and
+        // never strands a Firestore roster entry the host can't see go away (M12 defect (a)).
+        sessionManager.realtimeRef.onDisconnect().remove();
         await sessionManager.realtimeRef.set({
             connected: true,
             joystick: { x: 0, y: 0 },
             timestamp: Date.now()
         });
-        sessionManager.realtimeRef.onDisconnect().remove();
 
         showConnectionSuccess('Joined as Player ' + slot.slice(1) + '!');
         if (typeof mpUiPhoneJoined === 'function') mpUiPhoneJoined(slot);
@@ -164,8 +196,55 @@ async function mpTryJoin(code) {
 function mpHandleKicked() {
     debugLog('⚠️ MP slot lost — rejoining');
     mpClient.slot = null;
+    mpClientStopHostWatch(); // never leave the watchdog running once we've lost the slot
     showConnectionStatus('Reconnecting…');
     // The next snapshot drives mpTryJoin again (or queues us behind a live round).
+}
+
+/**
+ * Host-staleness watchdog (M12 defect (c)). During PLAYING the host stamps `lastActivity`
+ * on every state write (mp-net.js), so a healthy round produces frequent snapshots and
+ * mpClient.lastHostActivityAt keeps moving. A host that silently goes (laptop sleep, wifi
+ * loss without beforeunload) stops writing, so no snapshot arrives, lastHostActivityAt
+ * freezes, and after gameConfig.hostStaleMs this surfaces a bounded, advisory
+ * "Host disconnected" state. Single guarded interval (no double-start); self-heals on the
+ * next fresh snapshot via mpClientClearHostStale().
+ */
+function mpClientStartHostWatch() {
+    if (mpClient.hostWatchTimer) return; // single watchdog
+    mpClient.hostWatchTimer = setInterval(() => {
+        if (syncedGameState !== GameState.PLAYING) { mpClientStopHostWatch(); return; }
+        const since = Date.now() - (mpClient.lastHostActivityAt || 0);
+        if (since > gameConfig.hostStaleMs && !mpClient.hostStale) {
+            mpClient.hostStale = true;
+            showConnectionStatus('Host disconnected — waiting to reconnect…');
+            const iface = document.getElementById('controller-interface');
+            if (iface) iface.classList.add('mp-queued'); // dim the joystick (reuse the queued style)
+            // since_ms bucketed to the nearest threshold multiple — counts only, no code/PII.
+            trackEvent('mp_host_stale', { since_ms: Math.round(since / 1000) * 1000 });
+        }
+    }, gameConfig.hostStaleCheckMs);
+}
+
+/** Stop the host-staleness watchdog and clear any advisory state. */
+function mpClientStopHostWatch() {
+    if (mpClient.hostWatchTimer) {
+        clearInterval(mpClient.hostWatchTimer);
+        mpClient.hostWatchTimer = null;
+    }
+    mpClientClearHostStale();
+}
+
+/** A fresh host snapshot arrived: clear the stale advisory + restore the joystick. */
+function mpClientClearHostStale() {
+    if (!mpClient.hostStale) return;
+    mpClient.hostStale = false;
+    // Only un-dim if we're not legitimately queued behind a round we can't play.
+    if (!mpClient.waiting) {
+        const iface = document.getElementById('controller-interface');
+        if (iface) iface.classList.remove('mp-queued');
+    }
+    showConnectionStatus('Reconnected ✓');
 }
 
 /**
@@ -190,6 +269,7 @@ function mpHandleFeedback(feedback) {
 // reliably on mobile where beforeunload often doesn't); onDisconnect is the
 // server-side backstop either way.
 window.addEventListener('pagehide', () => {
+    mpClientStopHostWatch(); // never leak the watchdog interval across a hide/close
     if (mpClient.slot && sessionManager.realtimeRef) {
         sessionManager.realtimeRef.remove().catch(() => {});
     }

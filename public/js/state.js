@@ -108,6 +108,12 @@ let sessionManager = {
  * @property {Object<string,{action:string,at:number,fired:boolean}>} lastAction - per-slot
  *   last-handled action + timestamp, so a repeated/spammed action for a slot inside
  *   gameConfig.actionIgnoreMs is ignored (host-side idempotency / write-amplification guard).
+ * @property {Object<string,number>} seenAt - slot -> last time its RTDB child was seen live
+ *   (Date.now()). Seeded when a roster entry first appears with no live child, so the
+ *   reconciliation sweep (mp-net.js) can reap a slot whose child never went live for
+ *   gameConfig.rosterReapMs (M12 ghost-roster backstop).
+ * @property {number|null} reconcileTimer - setInterval handle for the host roster
+ *   reconciliation sweep (cleared on beforeunload); null when not running.
  */
 
 // Multiplayer session state — desktop host side. Inert until a multiplayer
@@ -120,7 +126,9 @@ let mpSession = {
     stamps: {},        // slot -> last-applied client Date.now() stamp (monotonic ordering + staleness coast)
     roster: {},        // last-seen players map from the session doc
     defeated: [],      // elimination order accumulated for the results write
-    lastAction: {}     // slot -> { action, at, fired }: host-side per-slot action ignore-window
+    lastAction: {},    // slot -> { action, at, fired }: host-side per-slot action ignore-window
+    seenAt: {},        // slot -> last time its RTDB child was live (Date.now()); ghost-roster reap clock (M12)
+    reconcileTimer: null // setInterval handle for the roster reconciliation sweep (M12)
 };
 
 /**
@@ -131,6 +139,13 @@ let mpSession = {
  * @property {boolean} waiting - true while queued behind a round in progress.
  * @property {boolean} joining - re-entrancy guard around the claim transaction.
  * @property {Object|null} sessionDocRef - Firestore session doc ref.
+ * @property {number} lastHostActivityAt - local Date.now() of the last Firestore snapshot
+ *   received from the host (refreshed every snapshot). The host-staleness watchdog (M12)
+ *   compares against this so a silently-gone host (laptop sleep) is surfaced to the phone.
+ * @property {number|null} hostWatchTimer - setInterval handle for the host-staleness watchdog
+ *   (started while PLAYING, cleared otherwise / on kick); null when not running.
+ * @property {boolean} hostStale - true while the watchdog has flagged the host as stale
+ *   (advisory only; auto-clears when fresh snapshots resume).
  */
 
 // Multiplayer client state — phone side. Inert until a phone joins a
@@ -141,7 +156,10 @@ let mpClient = {
     token: null,       // per-session rejoin token (localStorage-backed)
     waiting: false,    // true while queued behind a round in progress
     joining: false,    // re-entrancy guard around the claim transaction
-    sessionDocRef: null
+    sessionDocRef: null,
+    lastHostActivityAt: 0, // local Date.now() of the last host snapshot (host-staleness watchdog, M12)
+    hostWatchTimer: null,  // setInterval handle for the host-staleness watchdog (M12)
+    hostStale: false       // true while the host is flagged stale (advisory; auto-clears on fresh snapshot)
 };
 
 // Canvas drawing context variables

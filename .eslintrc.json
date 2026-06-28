@@ -166,6 +166,8 @@
     "mpHandleControllerChild": "readonly",
     "mpOnControllerGone": "readonly",
     "mpOnControllerLive": "readonly",
+    "mpReconcileRoster": "readonly",
+    "mpStartRosterReconcile": "readonly",
     "mpDocRef": "readonly",
 
     "mpTokenKey": "readonly",
@@ -174,6 +176,9 @@
     "mpPhoneSnapshot": "readonly",
     "mpTryJoin": "readonly",
     "mpHandleKicked": "readonly",
+    "mpClientStartHostWatch": "readonly",
+    "mpClientStopHostWatch": "readonly",
+    "mpClientClearHostStale": "readonly",
     "mpHandleFeedback": "readonly",
 
     "mpUiLastRosterKeys": "writable",
