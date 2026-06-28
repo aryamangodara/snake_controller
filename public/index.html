@@ -139,7 +139,11 @@
             <!-- Main Game Area -->
             <div class="game-area">
                 <div class="game-board-container">
-                    <canvas id="game-canvas" width="600" height="600"></canvas>
+                    <!-- Solo screen-reader live region: announces "Game over. Final score N."
+                         on the GAME_OVER transition (written by gameOver() in game.js).
+                         Mirrors the multiplayer #mp-announcer pattern. -->
+                    <span id="game-announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></span>
+                    <canvas id="game-canvas" width="600" height="600" role="img" aria-label="Snake game board"></canvas>
                     <div id="combo-display" class="combo-display hidden">
                         <span class="combo-fill"></span>
                         <span class="combo-label"></span>
@@ -176,7 +180,7 @@
                     <div class="score-card">
                         <div class="current-score">
                             <span class="score-label">Score</span>
-                            <span id="score" class="score-value">0</span>
+                            <span id="score" class="score-value" aria-live="polite" aria-atomic="true">0</span>
                         </div>
                         <div class="current-score">
                             <span class="score-label">Best</span>

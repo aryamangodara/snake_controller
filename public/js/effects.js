@@ -14,6 +14,17 @@ const effects = {
     shake: { until: 0, magnitude: 0, duration: 1 }
 };
 
+// Accessibility: honor the OS "reduce motion" preference for the JS-driven juice
+// (canvas screen-shake + particle/score-pop bursts). The CSS half lives in base.css.
+// matchMedia is live, so re-reading .matches tracks runtime OS changes without re-init.
+// typeof-guarded + defaults to "motion allowed" so jsdom/Node (where matchMedia may be
+// absent) keeps the existing effects behavior for unit tests.
+const reducedMotionMql =
+    typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+function prefersReducedMotion() {
+    return !!(reducedMotionMql && reducedMotionMql.matches);
+}
+
 /**
  * Burst of particles flying outward from (x, y) plus an expanding ring — e.g. when
  * food is eaten or the snake crashes.
@@ -25,6 +36,7 @@ const effects = {
  *   higher values emit more + faster particles and a wider ripple. See logic.comboJuice.
  */
 function spawnFoodBurst(x, y, color, intensity = 1) {
+    if (prefersReducedMotion()) return;
     const now = Date.now();
     const scale = Math.max(1, intensity);
     const count = Math.round(10 * scale);
@@ -54,6 +66,7 @@ function spawnFoodBurst(x, y, color, intensity = 1) {
  * @param {string} color
  */
 function spawnScorePop(x, y, text, color) {
+    if (prefersReducedMotion()) return;
     effects.scorePops.push({ x, y, text, born: Date.now(), ttl: 700, color: color || '#ffffff' });
 }
 
@@ -63,6 +76,7 @@ function spawnScorePop(x, y, text, color) {
  * @param {number} durationMs
  */
 function triggerShake(magnitude, durationMs) {
+    if (prefersReducedMotion()) return;
     effects.shake = { until: Date.now() + durationMs, magnitude, duration: durationMs };
 }
 
@@ -152,6 +166,8 @@ function resetEffects() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         effects,
+        reducedMotionMql,
+        prefersReducedMotion,
         spawnFoodBurst,
         spawnScorePop,
         triggerShake,

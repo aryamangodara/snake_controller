@@ -650,6 +650,13 @@ function gameOver() {
         finalScoreElement.textContent = gameState.score.toString();
     }
 
+    // Accessibility: announce the outcome to screen readers via the polite/assertive
+    // live region so a blind solo player hears the result. No PII, no session code.
+    const announcer = document.getElementById('game-announcer');
+    if (announcer) {
+        announcer.textContent = `Game over. Final score ${gameState.score}.`;
+    }
+
     // Record the run and surface a "new best" badge when earned.
     const isNewBest = recordScore(gameState.score);
     updateHighScoreDisplay();

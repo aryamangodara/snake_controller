@@ -127,9 +127,37 @@ body.loaded .mobile-view {
   position: relative;
 }
 
-.btn:focus-visible {
-  outline: none;
+/* Shared keyboard focus ring (WCAG 2.4.7). Uses outline — which, unlike box-shadow,
+   is NOT clipped by the gradient pills' overflow:hidden (.social-link/.center-btn/
+   .share-btn). :focus-visible (not :focus) so mouse/touch taps draw no ring. */
+.btn:focus-visible,
+.social-link:focus-visible,
+.center-btn:focus-visible,
+.share-btn:focus-visible,
+.btn-connect:focus-visible,
+.btn-play-again:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
   box-shadow: var(--focus-ring);
+}
+
+/* Honor the OS-level "reduce motion" preference: neutralize ambient/decorative
+   animation (scrolling grid, floating particles, gradient title, glows, pulses,
+   combo pop, loss shake) globally. Uses ~0 duration — NOT display:none / animation:none
+   — so JS that re-arms animations via a reflow + animationend still settles
+   (restartComboTimer, loss/win-flash). The more-specific multiplayer.css block stays.
+   The matching JS-side canvas shake/particle gate lives in effects.js. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ==========================================
