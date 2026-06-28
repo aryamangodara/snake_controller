@@ -589,14 +589,17 @@ function updateCenterButtonIcon(currentState) {
     if (currentState === GameState.WAITING_FOR_START) {
         centerBtn.disabled = false;
         centerBtn.classList.add('ready');
+        centerBtn.setAttribute('aria-label', 'Start game');
         if (btnIcon) btnIcon.textContent = '▶';
     } else if (currentState === GameState.GAME_OVER) {
         centerBtn.disabled = false;
         centerBtn.classList.add('restart');
+        centerBtn.setAttribute('aria-label', 'Play again');
         if (btnIcon) btnIcon.textContent = '↻';
     } else if (currentState === GameState.PLAYING) {
         centerBtn.disabled = true;
         centerBtn.classList.add('playing');
+        centerBtn.setAttribute('aria-label', 'Game in progress');
         if (btnIcon) btnIcon.textContent = '🐍';
     }
 }

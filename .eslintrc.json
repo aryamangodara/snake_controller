@@ -104,6 +104,9 @@
     "fetchTopScores": "readonly",
     "getPlayerRank": "readonly",
 
+    "lbLastFocus": "writable",
+    "LB_FOCUSABLE": "readonly",
+    "lbFocusTrap": "readonly",
     "openLeaderboard": "readonly",
     "closeLeaderboard": "readonly",
     "lbToggle": "readonly",

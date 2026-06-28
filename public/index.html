@@ -369,6 +369,11 @@
                     <span class="mp-chip-dot" aria-hidden="true"></span>
                     <span class="mp-banner-text">You're in! You are <strong id="mp-banner-name">Player 1</strong></span>
                     <button id="mp-edit-name" class="mp-edit-name" type="button" aria-label="Edit your name">✏️</button>
+                    <!-- In-DOM themed rename editor (replaces window.prompt); mirrors #name-entry. -->
+                    <span id="mp-name-edit" class="mp-name-edit hidden">
+                        <input type="text" id="mp-name-input" class="mp-name-input" maxlength="16" placeholder="Your name" autocomplete="off" aria-label="Your player name (1 to 16 characters)">
+                        <button id="mp-name-save" class="mp-name-save" type="button" aria-label="Save name">✓</button>
+                    </span>
                 </div>
 
                 <!-- Joystick Control -->
