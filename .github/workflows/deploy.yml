@@ -41,6 +41,21 @@ jobs:
       - name: 🧪 Unit tests
         run: npm test
 
+      - name: ☕ Set up Java (Firebase emulators)
+        # The Firestore + RTDB emulators need a JRE. Pin it explicitly so the
+        # emulator boot is deterministic, not reliant on the runner image default.
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🔥 Rules tests (emulated)
+        # BLOCKING gate: boots the Firestore + RTDB emulators against the REAL
+        # firestore.rules / database.rules.json and asserts the security contract
+        # (allow + deny) before any deploy. `emulators:exec` exits non-zero if the
+        # wrapped vitest run fails, so a rule regression fails the job here.
+        run: npm run test:rules
+
       - name: 🔍 Quality Checks
         run: |
           echo "🧪 Running Syntax Checks..."
