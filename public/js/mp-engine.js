@@ -211,6 +211,15 @@ function checkEndCondition(deathsThisTick) {
 }
 
 /**
+ * @typedef {Object} MpResults
+ * The end-of-round summary the defeat / winner cards render from.
+ * @property {string|null} winnerSlot - winning slot, or null for a draw / 1-player round.
+ * @property {Array<string>} defeated - names of players the winner eliminated.
+ * @property {Array<{slot:string, name:string, score:number, death:(Object|null)}>} players
+ *   - per-player summary; death null = survivor.
+ */
+
+/**
  * Multiplayer terminal path — fully replaces the solo gameOver(): NO local best,
  * NO global leaderboard, NO name entry. Builds the results object the defeat /
  * winner cards render from.

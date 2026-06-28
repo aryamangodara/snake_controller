@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "strict": false,
+    "noEmit": true,
+    "allowJs": true,
+    "lib": ["dom", "es2021"],
+    "target": "es2021",
+    "module": "none"
+  },
+  "include": ["public/js/**/*.js"],
+  "exclude": ["node_modules", "public/sw.js"]
+}

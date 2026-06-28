@@ -5,6 +5,7 @@
   "scripts": {
     "start": "npx serve -s public",
     "lint": "eslint public tests",
+    "check:globals": "node scripts/check-globals.mjs",
     "format": "prettier --write \"public/**/*.{js,css,html}\" \"tests/**/*.js\"",
     "test": "vitest run"
   },

@@ -32,6 +32,12 @@ jobs:
       - name: 🔎 Lint
         run: npm run lint
 
+      - name: 🔒 Globals guard
+        # Fails the build if .eslintrc.json "globals" drifts from the top-level
+        # declarations in public/js/*.js (either direction). The single-global-scope
+        # design relies on that list staying exact; this makes drift a red build.
+        run: npm run check:globals
+
       - name: 🧪 Unit tests
         run: npm test
 

@@ -21,10 +21,36 @@ function createInitialSnake() {
 }
 
 /**
+ * @typedef {Object} GameStateObj
+ * The whole solo/multiplayer game state. Named *Obj to not collide with the
+ * `GameState` enum (config.js). Constructed by createInitialGameState() (solo)
+ * and createMultiplayerState() (players.js) — keep this typedef in sync with both.
+ * @property {Array<{x:number,y:number}>} snake - solo snake body (head first).
+ * @property {number} direction - current heading, radians.
+ * @property {number} targetDirection - joystick target heading, radians.
+ * @property {number} baseSpeed - minimum constant speed.
+ * @property {number} currentSpeed - base + input boost.
+ * @property {{x:number,y:number}} food - current fruit position.
+ * @property {number} score - solo score.
+ * @property {boolean} gameRunning - rAF loop active.
+ * @property {number} lastUpdateTime - perf timestamp of last frame.
+ * @property {number} lastMoveTime - perf timestamp of last move step.
+ * @property {string} currentState - one of GameState.* (config.js enum).
+ * @property {{x:number,y:number}} joystickInput - last joystick vector.
+ * @property {number} frameCount - frames elapsed this run.
+ * @property {number} combo - current eat streak (drives the multiplier).
+ * @property {number} lastFoodTime - timestamp of last food eaten (combo window).
+ * @property {Array<number>} milestonesFired - score thresholds toasted this run.
+ * @property {'solo'|'multi'} mode - every engine branch keys off this.
+ * @property {Array<Player>} players - per-player state in multiplayer (empty in solo).
+ * @property {MpResults|null} [mpResults] - set by endMultiplayerGame() (mp-engine.js).
+ */
+
+/**
  * Builds a fresh initial game state. The SINGLE construction site for the state
  * shape — used both for the boot-time global below and by restartGame() (game.js),
  * so a new field can never silently exist in one and not the other.
- * @returns {object} A complete, fresh gameState object.
+ * @returns {GameStateObj} A complete, fresh gameState object.
  */
 function createInitialGameState() {
     return {
@@ -53,6 +79,7 @@ function createInitialGameState() {
 }
 
 // Global game state - Enhanced for constant movement
+/** @type {GameStateObj} */
 let gameState = createInitialGameState();
 
 // Enhanced session management with better error handling
@@ -69,8 +96,20 @@ let sessionManager = {
     connectionRetries: 0
 };
 
+/**
+ * @typedef {Object} MpSession
+ * Desktop host side multiplayer session state (mp-net.js owns it).
+ * @property {boolean} enabled - true once a multiplayer session is active.
+ * @property {Set<string>} live - slots with a live RTDB controller child.
+ * @property {Object<string,{x:number,y:number}>} inputs - slot -> last joystick vector.
+ * @property {Object<string,number>} stamps - slot -> last-applied client Date.now() stamp.
+ * @property {Object<string,Object>} roster - last-seen players map from the session doc.
+ * @property {Array<string>} defeated - elimination order for the results write.
+ */
+
 // Multiplayer session state — desktop host side. Inert until a multiplayer
 // session activates it (mp-net.js); plain literals only, so tests load clean.
+/** @type {MpSession} */
 let mpSession = {
     enabled: false,
     live: new Set(),   // slots with a live RTDB controller child
@@ -80,8 +119,19 @@ let mpSession = {
     defeated: []       // elimination order accumulated for the results write
 };
 
+/**
+ * @typedef {Object} MpClient
+ * Phone side multiplayer client state (mp-client.js owns it).
+ * @property {string|null} slot - claimed slot ('p1'..'pN') or null.
+ * @property {string|null} token - per-session rejoin token (localStorage-backed).
+ * @property {boolean} waiting - true while queued behind a round in progress.
+ * @property {boolean} joining - re-entrancy guard around the claim transaction.
+ * @property {Object|null} sessionDocRef - Firestore session doc ref.
+ */
+
 // Multiplayer client state — phone side. Inert until a phone joins a
 // multiplayer session (mp-client.js).
+/** @type {MpClient} */
 let mpClient = {
     slot: null,        // claimed slot ('p1'..'pN') or null
     token: null,       // per-session rejoin token (localStorage-backed)
