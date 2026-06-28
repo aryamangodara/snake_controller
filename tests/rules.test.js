@@ -497,6 +497,33 @@ describe('RTDB controllers/{$sessionId}', () => {
         );
     });
 
+    it('allows a valid host bookkeeping child write (_host)', async () => {
+        await assertSucceeds(
+            set(node(`${CODE}/_host`), {
+                connected: false,
+                initialized: true,
+                timestamp: 123,
+            }),
+        );
+    });
+
+    it('denies an unknown key inside the _host child (joystick)', async () => {
+        await assertFails(
+            set(node(`${CODE}/_host`), {
+                connected: false,
+                initialized: true,
+                timestamp: 123,
+                joystick: { x: 0, y: 0 },
+            }),
+        );
+    });
+
+    it('denies a non-slot, non-_host child key (foo)', async () => {
+        await assertFails(
+            set(node(`${CODE}/foo`), { connected: true, timestamp: 123 }),
+        );
+    });
+
     it('allows read under a 6-digit code', async () => {
         await assertSucceeds(get(node(CODE)));
     });

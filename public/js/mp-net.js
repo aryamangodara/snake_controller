@@ -180,38 +180,56 @@ function mpHandleDocSnapshot(doc) {
  * (arena rounds) or to the classic solo handler (1-player rounds), and reconcile
  * roster liveness. Legacy flat-shape nodes (old cached phones) are handled by
  * the caller's existing path.
+ *
+ * Retained as a thin wrapper over the per-slot entry point so the localStorage /
+ * legacy callers and any test referencing it keep working. The hybrid Firebase
+ * host now drives per-child listeners and calls mpHandleControllerChild directly
+ * (network.js), so this whole-node fan-out only runs on non-per-child callers.
  * @param {object} node - the whole controllers/{code} value.
  */
 function mpHandleControllerNode(node) {
     for (const slot of PLAYER_SLOTS) {
-        const c = node ? node[slot] : null;
-        const wasLive = mpSession.live.has(slot);
-        if (c && c.connected) {
-            // Out-of-order drop: only apply this slot's input when its client stamp is
-            // strictly newer than the last we applied for THIS slot (per-source compare).
-            // A missing/legacy stamp is treated as "always newer" so old phones still work.
-            const fresh = isNewerStamp(c.timestamp, mpSession.stamps[slot]);
-            if (fresh) {
-                if (typeof c.timestamp === 'number' && isFinite(c.timestamp)) {
-                    mpSession.stamps[slot] = c.timestamp;
-                }
-                mpSession.inputs[slot] = c.joystick || { x: 0, y: 0 };
-                if (gameState.mode === 'multi') {
-                    applyPlayerJoystick(slot, mpSession.inputs[slot]);
-                } else if (gameState.currentState === GameState.PLAYING) {
-                    // 1-player round: the lone phone drives the classic solo snake.
-                    // Pass the stamp so the solo monotonic guard + coast see fresh input.
-                    handleJoystickInputFromMobile(mpSession.inputs[slot], c.timestamp);
-                }
+        mpHandleControllerChild(slot, node ? node[slot] : null);
+    }
+}
+
+/**
+ * Per-slot RTDB child handler — the O(1)-per-write entry point. Applies one
+ * slot's joystick to its arena player (multi) or to the classic solo snake
+ * (1-player round), and reconciles that slot's liveness. Called once per child
+ * event from the host's per-child listeners (child_added/changed/removed) so a
+ * single phone's write wakes only its own slot. A removed/absent child
+ * (childData == null/undefined, or connected falsy) runs the "slot gone" branch.
+ * @param {string} slot - the slot id (p1..p6); callers must pre-filter to ^p[1-6]$.
+ * @param {object|null} c - that slot's child value ({connected,joystick,timestamp}).
+ */
+function mpHandleControllerChild(slot, c) {
+    const wasLive = mpSession.live.has(slot);
+    if (c && c.connected) {
+        // Out-of-order drop: only apply this slot's input when its client stamp is
+        // strictly newer than the last we applied for THIS slot (per-source compare).
+        // A missing/legacy stamp is treated as "always newer" so old phones still work.
+        const fresh = isNewerStamp(c.timestamp, mpSession.stamps[slot]);
+        if (fresh) {
+            if (typeof c.timestamp === 'number' && isFinite(c.timestamp)) {
+                mpSession.stamps[slot] = c.timestamp;
             }
-            if (!wasLive) {
-                mpSession.live.add(slot);
-                mpOnControllerLive(slot);
+            mpSession.inputs[slot] = c.joystick || { x: 0, y: 0 };
+            if (gameState.mode === 'multi') {
+                applyPlayerJoystick(slot, mpSession.inputs[slot]);
+            } else if (gameState.currentState === GameState.PLAYING) {
+                // 1-player round: the lone phone drives the classic solo snake.
+                // Pass the stamp so the solo monotonic guard + coast see fresh input.
+                handleJoystickInputFromMobile(mpSession.inputs[slot], c.timestamp);
             }
-        } else if (wasLive) {
-            mpSession.live.delete(slot);
-            mpOnControllerGone(slot);
         }
+        if (!wasLive) {
+            mpSession.live.add(slot);
+            mpOnControllerLive(slot);
+        }
+    } else if (wasLive) {
+        mpSession.live.delete(slot);
+        mpOnControllerGone(slot);
     }
 }
 

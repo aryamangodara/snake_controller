@@ -77,10 +77,18 @@ exactly the keys above with the validations noted; deletes are denied. Reads use
 for rank) — no composite index needed.
 
 ## Cleanup / lifecycle
-Sessions are ephemeral. The desktop host registers `onDisconnect().remove()` on its RTDB node and
-best-effort-deletes the Firestore doc + RTDB node on `beforeunload`. For guaranteed Firestore
-cleanup, configure a **TTL policy** on the `lastActivity` field (Firebase console → Firestore →
-TTL) so abandoned sessions expire automatically.
+Sessions are ephemeral. The desktop host writes its own bookkeeping to a reserved
+`controllers/{code}/_host` child (`{connected, initialized, timestamp}`) and registers
+`onDisconnect().remove()` on **that `_host` child only** — never the parent — so a host socket
+blip removes only host bookkeeping and can never wipe a live player's `p{n}` slot child. On
+`beforeunload` the host best-effort-deletes the Firestore doc + the whole RTDB parent node (the
+deliberate full teardown when the host genuinely leaves). For guaranteed Firestore cleanup,
+configure a **TTL policy** on the `lastActivity` field (Firebase console → Firestore → TTL) so
+abandoned sessions expire automatically.
+
+The host watches `controllers/{code}` via **per-child** listeners (`child_added` /
+`child_changed` / `child_removed`) filtered to `p[1-6]` keys, so each phone's joystick write wakes
+only its own slot (O(1) per write) and the `_host` child + legacy flat keys are ignored.
 
 ## Security model & accepted risks
 There is **no authentication** — access is scoped by path shape (6-digit code) and document
@@ -95,10 +103,13 @@ shape, not identity. The following risks are **known and accepted** for this pro
 - **Multiplayer slot griefing:** the per-slot rejoin `token` in `players.{slot}` is readable by
   anyone holding the code; a malicious client can overwrite roster entries, fake actions, or spoof
   another slot's joystick. Same griefing class as session griefing — annoyance only.
-- **Stale-client RTDB clobber:** an old cached phone joining a multiplayer session writes the
-  legacy flat shape over `controllers/{code}`, transiently wiping the slot children; each live
-  phone's next ~33ms joystick update recreates its child (self-heals). The SW cache bump shipped
-  with the feature shrinks this skew window to one reload.
+- **Stale-client RTDB clobber:** an old cached phone joining a multiplayer session may write the
+  legacy flat shape over `controllers/{code}`. As of M4 the host's per-child listeners filter to
+  `p[1-6]` keys, so the host **ignores** that flat write entirely in a `mode:'multi'` round — it can
+  no longer double-drive the solo snake. A flat `set()` at the parent path still transiently
+  overwrites the slot children at the RTDB layer, but each live phone's next ~33ms per-slot write
+  recreates its child (self-heals), and the host never *consumes* the flat shape. The SW cache bump
+  shipped with the feature shrinks this skew window to one reload.
 - **Write-frequency abuse (M8):** the rules validate **shape and range** of a write but place
   **no limit on its FREQUENCY** — they cannot, without per-caller identity (Firestore/RTDB rules
   can't count writes-per-second per anonymous caller). So a client holding the code can spam

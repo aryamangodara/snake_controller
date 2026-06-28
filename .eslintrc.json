@@ -163,6 +163,7 @@
     "sendHapticFeedbackTo": "readonly",
     "mpHandleDocSnapshot": "readonly",
     "mpHandleControllerNode": "readonly",
+    "mpHandleControllerChild": "readonly",
     "mpOnControllerGone": "readonly",
     "mpOnControllerLive": "readonly",
     "mpDocRef": "readonly",
@@ -304,7 +305,9 @@
     "LISTENER_RETRY_BACKOFF_MS": "readonly",
     "attachRealtimeListener": "readonly",
     "attachFirestoreListener": "readonly",
-    "resubscribeListeners": "readonly"
+    "resubscribeListeners": "readonly",
+    "SLOT_KEY_RE": "readonly",
+    "trackFirstControllerConnect": "readonly"
   },
   "rules": {
     "no-unused-vars": "warn",
