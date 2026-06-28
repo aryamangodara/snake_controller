@@ -19,6 +19,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import logic from '../public/js/logic.js';
+import utils from '../public/js/utils.js';
 
 const require = createRequire(import.meta.url);
 const ENGINE_SRC = join(__dirname, '..', 'public', 'js', 'mp-engine.js');
@@ -118,6 +119,14 @@ function freshEngine() {
     // the production contract (never throws) and lets us assert mp_game_over is PII-free.
     g.debugLog = () => {};
     g.trackEvent = (name, params = {}) => calls.track.push([name, { ...params }]);
+
+    // M2 lifecycle helpers the engine now calls by bare name (utils.js, not loaded as globals
+    // here). gameEventParams / resetRoundMetrics are pure — use the real implementations so the
+    // unified game_start/game_over params are exercised. recordRoundAndTier touches
+    // localStorage + analytics (absent in this harness), so stub it to a no-op.
+    g.gameEventParams = utils.gameEventParams;
+    g.resetRoundMetrics = utils.resetRoundMetrics;
+    g.recordRoundAndTier = () => {};
 
     const engine = require('../public/js/mp-engine.js');
     return { engine, players, calls };
@@ -399,12 +408,32 @@ describe('mp-engine — endMultiplayerGame results + no-PII analytics', () => {
         expect(globalThis.gameState.mpResults.players).toHaveLength(2);
         expect(globalThis.gameState.currentState).toBe('game_over');
 
-        // mp_game_over fired with winner_score and NO name / NO 6-digit session code.
-        const over = calls.track.find((c) => c[0] === 'mp_game_over');
+        // M2: the UNIFIED game_over (mp_game_over retired) carries winner_score + the shared
+        // run-shape params, and NO name / NO 6-digit session code.
+        const over = calls.track.find((c) => c[0] === 'game_over');
         expect(over).toBeTruthy();
+        expect(calls.track.find((c) => c[0] === 'mp_game_over')).toBeUndefined(); // retired
         expect(over[1].winner_score).toBe(70);
+        expect(over[1].mode).toBe('multi');
+        expect(over[1].players).toBe(2);
         const blob = JSON.stringify(over[1]);
         expect(blob).not.toMatch(/Ann|Bo/); // no PII (names)
         expect(/\d{6}/.test(blob)).toBe(false); // no 6-digit session code
+
+        // M2: a stable round_completed NSM signal fires alongside game_over (mode/players only).
+        const completed = calls.track.find((c) => c[0] === 'round_completed');
+        expect(completed).toBeTruthy();
+        expect(completed[1].mode).toBe('multi');
+        expect(completed[1].players).toBe(2);
+    });
+
+    it('fires the unified game_start{mode:multi} (mp_game_start retired)', () => {
+        const { engine, calls } = freshEngine();
+        engine.startMultiplayerGame([{ slot: 'p1', name: 'Ann' }, { slot: 'p2', name: 'Bo' }]);
+        const start = calls.track.find((c) => c[0] === 'game_start');
+        expect(start).toBeTruthy();
+        expect(start[1].mode).toBe('multi');
+        expect(start[1].players).toBe(2);
+        expect(calls.track.find((c) => c[0] === 'mp_game_start')).toBeUndefined(); // retired
     });
 });

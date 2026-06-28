@@ -2,19 +2,58 @@
 // MOBILE CONTROLLER LOGIC
 // ==========================================
 
+// Bounded `reason` enum for controller_connect_failed — frozen so the strings can never
+// drift and blow up GA4 cardinality (the low-cardinality guardrail). One value per known
+// failure branch of the connect path.
+const CONNECT_FAIL_REASONS = Object.freeze({
+    NOT_FOUND: 'not_found',                 // Firestore: code typo / host closed
+    FIREBASE_UNREACHABLE: 'firebase_unreachable', // Firebase retries exhausted → localStorage
+    LS_NOT_FOUND: 'ls_not_found',           // localStorage mode: no matching session
+    POST_LOOKUP: 'post_lookup'              // remote doc found, a later handshake step failed (Q8)
+});
+
+// 60s "never connected" timer (the created-but-never-paired phone drop-off). Armed when a
+// controller view opens; cleared on ANY successful connect (markControllerConnected) so it
+// can never fire after a real pairing. Single shared handle (one controller view per page).
+let controllerConnectTimer = null;
+// Captured arrival method ('qr' | 'manual_code') so controller_never_connected can attribute
+// the abandonment without re-reading the URL.
+let controllerArrivalMethod = 'manual_code';
+
+/**
+ * Clear the 60s never-connected timer the instant any connection path succeeds (solo hybrid,
+ * MP slot claim, OR localStorage), and fire the bounded controller_connected. The SINGLE
+ * success choke point so controller_never_connected can never fire after a real connect.
+ * Idempotent: a second call (re-entrant connect paths) is a harmless no-op.
+ */
+function markControllerConnected() {
+    if (controllerConnectTimer) {
+        clearTimeout(controllerConnectTimer);
+        controllerConnectTimer = null;
+    }
+}
+
 /**
  * Grabs the session from URL or prepares listeners
  */
 function initializeMobileController() {
     debugLog('📱 Initializing mobile controller...');
-    
+
     // Check if session code is passed in URL query param
     const urlParams = new URLSearchParams(window.location.search);
     const sessionFromUrl = urlParams.get('session');
 
     // Attribute how the controller arrived: scanning the QR carries ?session=, manual entry doesn't.
-    trackEvent('controller_arrival', { method: sessionFromUrl ? 'qr' : 'manual_code' });
-    
+    controllerArrivalMethod = sessionFromUrl ? 'qr' : 'manual_code';
+    trackEvent('controller_arrival', { method: controllerArrivalMethod });
+
+    // Arm the created→paired drop-off timer: if no connection succeeds within 60s, fire
+    // controller_never_connected ONCE. markControllerConnected() clears it on any success.
+    controllerConnectTimer = setTimeout(() => {
+        controllerConnectTimer = null;
+        trackEvent('controller_never_connected', { arrival: controllerArrivalMethod });
+    }, 60000);
+
     if (sessionFromUrl) {
         const sessionInput = document.getElementById('session-input');
         if (sessionInput) {
@@ -344,11 +383,15 @@ async function connectViaRobustHybrid(sessionCode) {
 
             // Multiplayer-capable session (every NEW desktop creates these):
             // the whole join/lobby/round journey lives in mp-client.js. The
-            // legacy path below keeps serving old cached desktops.
+            // legacy path below keeps serving old cached desktops. The MP join
+            // bypasses showControllerInterface, so clear the never-connected timer
+            // HERE before delegating (the remote doc was read = a real connection).
             if (sessionData.mode === 'multi' && typeof connectMultiplayer === 'function') {
+                markControllerConnected();
                 return connectMultiplayer(sessionCode, sessionDoc, sessionData);
             }
 
+            markControllerConnected(); // a real connect — disarm the never-connected timer
             sessionManager.connectedSession = sessionCode;
             sessionManager.connectionType = 'hybrid';
             showControllerInterface();
@@ -409,6 +452,9 @@ async function connectViaRobustHybrid(sessionCode) {
         if (error.notFound) {
             sessionManager.connectionRetries = 0;
             showConnectionError('Session not found — check the 6-digit code on the game screen.');
+            // Firebase answered: the code is just wrong / the host closed. Distinct from the
+            // post-lookup and unreachable branches so the pairing drop can be split by cause.
+            trackEvent('controller_connect_failed', { reason: CONNECT_FAIL_REASONS.NOT_FOUND });
             return;
         }
 
@@ -427,13 +473,18 @@ async function connectViaRobustHybrid(sessionCode) {
             debugLog('🔄 Max retries reached after a remote session was found — honest retryable error (no localStorage).');
             sessionManager.connectionRetries = 0;
             showConnectionError("Couldn't finish connecting. Check your connection and tap Connect to try again.");
-            trackEvent('controller_connect_failed', { reason: 'post_lookup' });
+            trackEvent('controller_connect_failed', { reason: CONNECT_FAIL_REASONS.POST_LOOKUP });
         } else {
             // Firebase was never available to this controller (e.g. waitForFirebaseReady
             // rejected before the .get()) so we never confirmed a remote doc. This is the
             // only case where same-device (two-tab) localStorage testing can apply.
             debugLog('🔄 Max retries reached, Firebase unavailable — retrying locally for same-device testing...');
             showConnectionError('Couldn\'t reach the game server — retrying locally for same-device testing…');
+            // Firebase retries exhausted with no remote doc confirmed → degrade to localStorage.
+            // Record both the connect failure cause AND the transport degradation (pairs with
+            // the desktop's offline_fallback{side:'desktop'}).
+            trackEvent('controller_connect_failed', { reason: CONNECT_FAIL_REASONS.FIREBASE_UNREACHABLE });
+            trackEvent('offline_fallback', { side: 'phone' });
             connectViaLocalStorage(sessionCode);
         }
     }
@@ -447,6 +498,7 @@ function connectViaLocalStorage(sessionCode) {
     const currentSession = localStorage.getItem('currentSession');
 
     if (currentSession === sessionCode) {
+        markControllerConnected(); // same-device connect established — disarm the timer
         sessionManager.connectedSession = sessionCode;
         sessionManager.connectionType = 'localStorage';
         showControllerInterface();
@@ -472,6 +524,9 @@ function connectViaLocalStorage(sessionCode) {
         
     } else {
         showConnectionError('Session not found. Make sure the game is running on desktop and try again.');
+        // localStorage mode found no matching session (the same-device-test miss). Bounded
+        // reason so the three connect failure causes stay separable in GA4.
+        trackEvent('controller_connect_failed', { reason: CONNECT_FAIL_REASONS.LS_NOT_FOUND });
     }
 }
 
@@ -568,6 +623,11 @@ function updateMobileGameOver(gs) {
         if (lastSyncedState !== GameState.GAME_OVER) {
             triggerHaptic([120, 60, 120, 60, 240]);
             playLossFlash(card);
+            // The defeat/share card is the highest-intent moment in the loop. Fire rematch_prompt
+            // on this SAME once-per-loss edge guard so it can't double-fire on snapshot replays.
+            // mode keys off the MP slot (typeof-guarded — mp-client.js may be absent on this path).
+            const onMpSlot = typeof mpClient !== 'undefined' && mpClient && mpClient.slot;
+            trackEvent('rematch_prompt', { mode: onMpSlot ? 'multi' : 'solo' });
         }
     } else {
         card.classList.add('hidden');

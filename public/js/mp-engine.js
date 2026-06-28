@@ -20,12 +20,17 @@ function startMultiplayerGame(roster) {
     gameState.currentState = GameState.PLAYING;
     gameState.lastUpdateTime = performance.now();
     gameState.lastMoveTime = performance.now();
+    // Seed this round's metric counters (round-level food total + peak combo) so the unified
+    // game_over reports an honest duration/food/combo, identical in shape to solo.
+    resetRoundMetrics(gameState);
     resetEffects();
     hideSoloHud();
     playStartSound();
     generateFood(aliveSnakes());
     mpUiHook('renderMpRoundStart');
-    trackEvent('mp_game_start', { players: roster.length });
+    // Unified game lifecycle: MP fires the SAME game_start{mode:'multi'} as solo (mp_game_start
+    // retired) so "rounds played" is one event name across modes. duration/food are 0 at start.
+    trackEvent('game_start', gameEventParams());
 }
 
 /**
@@ -141,6 +146,11 @@ function applyFoodEaten(player) {
     const multiplier = Math.min(player.combo, gameConfig.maxCombo);
     const gained = 10 * multiplier;
     player.score += gained;
+    // Round-level analytics counters (read by gameEventParams at game_over): total fruit
+    // consumed by all players, and the peak combo reached by ANY player this round. Identical
+    // param shape to solo, so the two engines stay one comparable funnel.
+    gameState.food_eaten = (gameState.food_eaten | 0) + 1;
+    if (multiplier > (gameState.maxCombo | 0)) gameState.maxCombo = multiplier;
 
     // Combo-scaled juice — the SAME logic.comboJuice curve as the solo eat block, so
     // the two engines never visibly diverge: scaled burst, small shake at x3+, flash
@@ -241,10 +251,17 @@ function endMultiplayerGame(winnerSlot) {
     debugLog('🏁 Multiplayer round over. Winner:', winnerSlot || 'draw');
     mpUiHook('renderMpEndScreen', gameState.mpResults);
     mpNetHook('publishMpResults', gameState.mpResults);
-    trackEvent('mp_game_over', {
-        players: gameState.players.length,
+    // Unified game lifecycle: MP fires the SAME game_over{mode:'multi',…} as solo (mp_game_over
+    // retired), plus the MP-only winner_score. mode/players/duration_s/food_eaten/max_combo come
+    // from the shared builder so a GA4 funnel can union solo + MP under one event name.
+    const runParams = gameEventParams();
+    trackEvent('game_over', {
+        ...runParams,
         winner_score: winner ? winner.score : 0 // no PII — names never leave the session
     });
+    // NSM: the same stable per-round signal solo fires, + the retention tier refresh.
+    trackEvent('round_completed', { mode: runParams.mode, players: runParams.players, duration_s: runParams.duration_s });
+    recordRoundAndTier();
 }
 
 /**

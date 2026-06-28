@@ -146,6 +146,11 @@ async function setupRobustHybridSession(sessionCode) {
     } catch (error) {
         console.error('❌ Hybrid session setup failed:', error);
         debugLog('🔄 Falling back to localStorage...');
+        // Post-hoc degradation: Firebase was "ready" at session_created time but setup threw,
+        // so this silent drop to localStorage is invisible to session_created. Record it
+        // (no code, no PII) so both transports are observable; pairs with the phone's
+        // offline_fallback{side:'phone'}.
+        trackEvent('offline_fallback', { side: 'desktop' });
         setupLocalStorageSession(sessionCode);
     }
 }

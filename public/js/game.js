@@ -180,7 +180,10 @@ function startGameLoop() {
 function startGame() {
     debugLog('🚀 Starting game with continuous snake movement!');
     gameState.currentState = GameState.PLAYING;
-    trackEvent('game_start', {});
+    // Seed this round's metric counters (duration/food/combo) BEFORE the event so the
+    // unified game_start carries a fresh mode/players shape (duration/food are 0 at start).
+    resetRoundMetrics(gameState);
+    trackEvent('game_start', gameEventParams());
     playStartSound();
     gameState.direction = 0; // Start facing right
     gameState.targetDirection = 0;
@@ -219,6 +222,9 @@ function restartGame() {
         currentState: GameState.PLAYING
     });
     sessionManager.lastJoystickUpdate = 0; // fresh input-ordering/coast baseline for this run
+    // Seed the new round's metric counters (the rebuilt state lacks them) so this round's
+    // game_over reports an honest duration/food/combo.
+    resetRoundMetrics(gameState);
 
     updateScore();
     resetEffects();
@@ -403,6 +409,10 @@ function moveSnake() {
         const multiplier = Math.min(gameState.combo, gameConfig.maxCombo);
         const gained = 10 * multiplier;
         gameState.score += gained;
+        // Per-round analytics counters (read by gameEventParams at game_over). maxCombo is a
+        // PEAK so it survives the gameState.combo = 0 reset in gameOver().
+        gameState.food_eaten = (gameState.food_eaten | 0) + 1;
+        if (multiplier > (gameState.maxCombo | 0)) gameState.maxCombo = multiplier;
         updateScore();
         updateComboDisplay();
 
@@ -723,10 +733,17 @@ function gameOver() {
         showNameEntry(gameState.score);
     }
 
-    // Analytics: the run's score + whether it set a new personal best. post_score is a
-    // GA4-recommended event that surfaces in the Games engagement reports.
-    trackEvent('game_over', { score: gameState.score, is_high_score: isNewBest });
+    // Analytics: the run's score + whether it set a new personal best, PLUS the unified
+    // run-shape params (mode/players/duration_s/food_eaten/max_combo) so solo and MP form one
+    // comparable funnel. maxCombo is a peak, so it survived the combo = 0 reset above.
+    // post_score is a GA4-recommended event that surfaces in the Games engagement reports.
+    const runParams = gameEventParams();
+    trackEvent('game_over', { score: gameState.score, is_high_score: isNewBest, ...runParams });
     trackEvent('post_score', { score: gameState.score });
+    // NSM: a stable per-round signal (decoupled from game_over param churn) + the retention
+    // tier refresh. mode/players/duration_s only — no score, no PII.
+    trackEvent('round_completed', { mode: runParams.mode, players: runParams.players, duration_s: runParams.duration_s });
+    recordRoundAndTier();
 
     // Hitstop: let the impact register for a beat before the modal slides in. The
     // snake is already frozen (state = GAME_OVER), so the canvas just keeps shaking.
