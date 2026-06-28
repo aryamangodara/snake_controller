@@ -172,17 +172,19 @@ function shouldSendJoystick(x, y, lastX, lastY, epsilon) {
 }
 
 /**
- * Host-side monotonic ordering guard: true if `incomingTs` is strictly newer than the
+ * Host-side monotonic ordering guard: true if `incomingTs` is NOT strictly older than the
  * last-applied `lastTs` for that SAME source, so a late older packet can't overwrite a
- * newer heading. A missing/non-numeric stamp (legacy cached phones) is treated as
- * "always newer" so old clients keep working — degrade soft.
+ * newer heading. Equal stamps PASS — two packets in the same millisecond are sequential
+ * (Date.now() resolution), not out-of-order, so dropping the second would wrongly discard
+ * a real input (e.g. a quick steer→release within one ms). A missing/non-numeric stamp
+ * (legacy cached phones) is treated as "always newer" so old clients keep working.
  * @param {*} incomingTs - the packet's client Date.now() stamp.
  * @param {number} lastTs - the last-applied stamp for this source (0 if none yet).
  * @returns {boolean}
  */
 function isNewerStamp(incomingTs, lastTs) {
     if (typeof incomingTs !== 'number' || !isFinite(incomingTs)) return true;
-    return incomingTs > (lastTs || 0);
+    return incomingTs >= (lastTs || 0);
 }
 
 /**

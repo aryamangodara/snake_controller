@@ -222,12 +222,12 @@ describe('shouldSendJoystick (change-gate)', () => {
 });
 
 describe('isNewerStamp (monotonic ordering guard)', () => {
-    it('accepts a strictly newer stamp', () => {
+    it('accepts a newer-or-equal stamp (equal = same-ms sequential, not out-of-order)', () => {
         expect(isNewerStamp(200, 100)).toBe(true);
+        expect(isNewerStamp(100, 100)).toBe(true);
     });
 
-    it('rejects an equal or older stamp (out-of-order packet)', () => {
-        expect(isNewerStamp(100, 100)).toBe(false);
+    it('rejects a strictly older stamp (genuinely out-of-order packet)', () => {
         expect(isNewerStamp(50, 100)).toBe(false);
     });
 
