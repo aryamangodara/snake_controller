@@ -127,8 +127,10 @@ function updateAndDrawEffects(ctx) {
         ctx.save();
         ctx.globalAlpha = 1 - t / p.ttl;
         ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 6;
+        // No per-particle shadowBlur: a burst is 10+ particles, and blurring each one
+        // re-rasterizes against the HiDPI buffer for a glow that's negligible against the
+        // food's own glow at the same spot. Keep the alpha-fade fill (matches the ripple,
+        // which already draws shadow-free above).
         ctx.beginPath();
         ctx.arc(px, py, p.size, 0, Math.PI * 2);
         ctx.fill();

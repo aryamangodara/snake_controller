@@ -14,10 +14,40 @@ function initializeDesktopGame() {
         return;
     }
     
-    ctx = canvas.getContext('2d');
+    // The board is fully opaque (renderGame paints colors.background over the whole
+    // canvas every frame), so alpha:false lets the browser skip transparent-layer
+    // compositing. (We intentionally omit the `desynchronized` low-latency hint: it
+    // routes drawing through a separate buffer with real compositing/readback quirks
+    // that can't be verified headlessly — alpha:false is the safe, bigger win.)
+    ctx = canvas.getContext('2d', { alpha: false });
     setupHiDPICanvas();
-    // Re-scale if the window moves to a screen with a different pixel ratio.
-    window.addEventListener('resize', () => { setupHiDPICanvas(); renderGame(); });
+    // Re-scale if the window moves to a screen with a different pixel ratio. Debounced
+    // so a drag-resize reallocates the backing store once at rest, not on every event.
+    window.addEventListener('resize', () => {
+        if (resizeDebounceTimer) clearTimeout(resizeDebounceTimer);
+        resizeDebounceTimer = setTimeout(() => {
+            resizeDebounceTimer = null;
+            setupHiDPICanvas();
+            renderGame();
+        }, RESIZE_DEBOUNCE_MS);
+    });
+
+    // Pause the rAF loop while the tab is hidden (no point painting an invisible board),
+    // and resume on visible. Reset the timestamps on resume so the long hidden gap
+    // doesn't feed a multi-second deltaTime into the loop (the MAX_FRAME_STEP clamp is a
+    // second line of defence). Purely additive — no other visibilitychange handler exists.
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (gameLoop) { cancelAnimationFrame(gameLoop); gameLoop = null; }
+            debugLog('⏸️ Tab hidden — pausing render loop');
+        } else if (gameState.gameRunning && !gameLoop) {
+            gameState.lastUpdateTime = performance.now();
+            gameState.lastMoveTime = performance.now();
+            lastIdlePaint = 0; // force an immediate repaint on return
+            debugLog('▶️ Tab visible — resuming render loop');
+            gameLoop = requestAnimationFrame(updateGame);
+        }
+    });
 
     generateNewSession();
     setupKeyboardControls();
@@ -203,6 +233,17 @@ function restartGame() {
     updateGameStateInFirebase();
 }
 
+// Idle render throttle: in WAITING_FOR_START / GAME_OVER the board has no gameplay
+// motion (only the Date.now() food pulse keeps frames dirty), so we cap the repaint
+// to ~30fps instead of the monitor's full refresh. PLAYING is never throttled.
+const IDLE_FRAME_MS = 1000 / 30;
+let lastIdlePaint = 0;
+
+// Trailing-edge debounce for the resize handler so a drag-resize reallocates the HiDPI
+// backing store once at rest instead of thrashing it on every resize event.
+const RESIZE_DEBOUNCE_MS = 150;
+let resizeDebounceTimer = null;
+
 // Consecutive frame errors (reset on the first clean frame). A transient throw should
 // degrade to a dropped frame, but a frame that throws EVERY tick must not spin forever
 // reporting + re-arming — after this many in a row we stop the loop and show recovery.
@@ -247,7 +288,15 @@ function updateGame(currentTime) {
             }
         }
 
-        renderGame();
+        // Idle FPS cap: while not PLAYING (lobby / game-over) nothing moves except the
+        // food pulse, so repaint at ~IDLE_FRAME_MS cadence instead of every rAF. During
+        // PLAYING we always paint, so gameplay smoothness is untouched.
+        if (gameState.currentState === GameState.PLAYING) {
+            renderGame();
+        } else if (currentTime - lastIdlePaint >= IDLE_FRAME_MS) {
+            renderGame();
+            lastIdlePaint = currentTime;
+        }
         gameState.lastUpdateTime = currentTime;
         consecutiveFrameErrors = 0; // a clean frame resets the spam guard
     } catch (err) {
@@ -418,6 +467,10 @@ function generateFood(snakes) {
     let attempts = 0;
     const maxAttempts = 30;
     const margin = gameConfig.wallMargin + gameConfig.foodSize;
+    // Compare squared distances so the per-candidate proximity check avoids sqrt/pow on
+    // the eat frame. Identical decision to `distance < segmentSpacing*2`.
+    const minDist = gameConfig.segmentSpacing * 2;
+    const minDistSq = minDist * minDist;
 
     do {
         gameState.food = {
@@ -429,10 +482,9 @@ function generateFood(snakes) {
         let tooClose = false;
         for (const body of bodies) {
             for (const segment of body) {
-                const distance = Math.sqrt(
-                    Math.pow(gameState.food.x - segment.x, 2) + Math.pow(gameState.food.y - segment.y, 2)
-                );
-                if (distance < gameConfig.segmentSpacing * 2) {
+                const dx = gameState.food.x - segment.x;
+                const dy = gameState.food.y - segment.y;
+                if (dx * dx + dy * dy < minDistSq) {
                     tooClose = true;
                     break;
                 }
@@ -456,9 +508,12 @@ function generateFood(snakes) {
  * @param {{body:string, head:string}} colorPair
  */
 function drawSnake(snake, direction, currentSpeed, baseSpeed, colorPair) {
-    // Body segments
-    ctx.shadowColor = colorPair.body;
-    ctx.shadowBlur = 8;
+    // Body segments — flat fill with NO per-segment shadowBlur. Previously every body
+    // segment set shadowBlur=8 and re-rasterized against the HiDPI buffer, making the
+    // dominant paint cost scale with snake length. The glow that carries the neon brand
+    // identity is kept on just the HEAD (below) and the FOOD (renderGame), so a frame now
+    // blurs a constant handful of shapes regardless of length. Body keeps its solid color.
+    ctx.shadowBlur = 0;
     ctx.fillStyle = colorPair.body;
 
     for (let i = 1; i < snake.length; i++) {
@@ -467,8 +522,6 @@ function drawSnake(snake, direction, currentSpeed, baseSpeed, colorPair) {
         ctx.arc(segment.x, segment.y, gameConfig.snakeSegmentSize / 2, 0, 2 * Math.PI);
         ctx.fill();
     }
-
-    ctx.shadowBlur = 0;
 
     // Head with direction indicator
     if (snake.length > 0) {
