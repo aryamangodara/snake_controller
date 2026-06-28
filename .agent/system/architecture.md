@@ -57,3 +57,7 @@ emit GA4 events through `trackEvent()` (a no-op when analytics is unavailable); 
 2. **Testable core** — gameplay math is pure and unit-tested; the rest is thin glue around it.
 3. **Resilient sync** — Firestore + RTDB with a `localStorage` fallback so it works on one device.
 4. **Responsive by role** — desktop vs. mobile layouts via dedicated stylesheets + viewport detection.
+5. **Graceful capability degradation** — the phone controller's optional browser APIs (Vibration,
+   Web Share, Clipboard, `crypto.randomUUID`, Web Audio, touch) are each feature-detected and fall
+   back to a documented no-op. The guards are tested in `tests/capabilities.test.js`; the
+   capability/browser support matrix is `.agent/system/support_matrix.md`.
