@@ -303,6 +303,12 @@ function waitForFirebaseReady() {
 // session setups (e.g. Firebase failing after a retry) don't stack duplicate handlers.
 let desktopStorageListenerAttached = false;
 
+// Host-side idempotency for the legacy solo action field: the last action we handled and
+// when, so a re-delivered / spammed start|restart inside gameConfig.actionIgnoreMs is a
+// no-op instead of re-firing startGame/restartGame (and the clearing write it triggers).
+// `fired` ensures the action_throttled analytics event emits ONCE per burst, not per drop.
+let lastSoloAction = { action: null, at: 0, fired: false };
+
 /**
  * LocalStorage polling backup method if Firebase fails.
  */
@@ -559,8 +565,23 @@ function handleJoystickInputFromMobile(joystickInput, ts) {
  * Process remote actions (start/restart) sent from the mobile connected device
  */
 function handleGameActionFromMobile(action) {
+    // Idempotency / ignore-window: a re-delivered or spammed copy of the same action
+    // within actionIgnoreMs is dropped before it can re-fire startGame/restartGame (and
+    // the Firestore clearing write that follows). State-based no-ops already guard a
+    // mistimed action; this additionally collapses a same-window action FLOOD to one.
+    const now = Date.now();
+    if (action === lastSoloAction.action && now - lastSoloAction.at < gameConfig.actionIgnoreMs) {
+        debugLog('🚫 Ignored repeated solo action within window:', action);
+        if (!lastSoloAction.fired && typeof trackEvent === 'function') {
+            trackEvent('action_throttled', { side: 'host', kind: 'solo' });
+            lastSoloAction.fired = true; // one analytics event per burst, not per dropped write
+        }
+        return;
+    }
+    lastSoloAction = { action, at: now, fired: false };
+
     debugLog('🎮 Handling game action:', action);
-    
+
     if (action === 'start' && gameState.currentState === GameState.WAITING_FOR_START) {
         startGame();
     } else if (action === 'restart' && gameState.currentState === GameState.GAME_OVER) {

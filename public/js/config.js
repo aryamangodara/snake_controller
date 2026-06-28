@@ -145,6 +145,11 @@ const gameConfig = {
     retryDelayMs: 2000,
     pairingNudgeMs: 20000, // Host: show the "still waiting? copy the link" nudge if no phone has connected by now
 
+    // Action rate-limiting (no-auth defense-in-depth — annoyance/write-amplification mitigation,
+    // NOT a security boundary; see .agent/system/firebase_schema.md "Write-frequency abuse").
+    actionDebounceMs: 400, // Client: ignore a REPEAT of the same action (start/restart) within this window
+    actionIgnoreMs: 400,   // Host: ignore a repeated action for the same slot within this window (idempotency)
+
     // Multiplayer. THE single knob for player capacity: slots, colors, spawn
     // layout, lobby UI, and the claim flow all derive from it (players.js /
     // mp-*.js), and the deployed security rules already accept p1–p6 — so

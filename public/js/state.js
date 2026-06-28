@@ -105,6 +105,9 @@ let sessionManager = {
  * @property {Object<string,number>} stamps - slot -> last-applied client Date.now() stamp.
  * @property {Object<string,Object>} roster - last-seen players map from the session doc.
  * @property {Array<string>} defeated - elimination order for the results write.
+ * @property {Object<string,{action:string,at:number,fired:boolean}>} lastAction - per-slot
+ *   last-handled action + timestamp, so a repeated/spammed action for a slot inside
+ *   gameConfig.actionIgnoreMs is ignored (host-side idempotency / write-amplification guard).
  */
 
 // Multiplayer session state — desktop host side. Inert until a multiplayer
@@ -116,7 +119,8 @@ let mpSession = {
     inputs: {},        // slot -> last joystick {x, y}
     stamps: {},        // slot -> last-applied client Date.now() stamp (monotonic ordering + staleness coast)
     roster: {},        // last-seen players map from the session doc
-    defeated: []       // elimination order accumulated for the results write
+    defeated: [],      // elimination order accumulated for the results write
+    lastAction: {}     // slot -> { action, at, fired }: host-side per-slot action ignore-window
 };
 
 /**

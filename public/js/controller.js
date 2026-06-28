@@ -281,6 +281,11 @@ let lastFeedbackAt = 0;
 // Tracks the last synced game state so the loss reaction (haptic + flash) fires
 // exactly ONCE per loss, not on every snapshot. Re-arms when a new game starts.
 let lastSyncedState = null;
+// Client-side action debounce: the last action we emitted and when, so a rapid
+// double-tap of start/restart collapses to ONE transport write within
+// gameConfig.actionDebounceMs. Keyed on the action VALUE so 'restart' after
+// 'start' is never suppressed, and the FIRST press always passes (action === null).
+let lastActionSent = { action: null, at: 0 };
 
 /**
  * Fire a haptic buzz on the phone — cross-platform and best-effort. Never throws.
@@ -688,8 +693,20 @@ function sendJoystickInput(x, y) {
  */
 function sendGameAction(action) {
     if (!sessionManager.connectedSession) return;
+
+    // Debounce a rapid REPEAT of the same action (covers BOTH transports + solo/MP,
+    // since this sits before the transport branch). The first press and any later
+    // different/spaced-out action always pass — this only drops a same-action repeat
+    // inside the window, so a legitimate start → (play) → restart flow is unaffected.
+    const now = Date.now();
+    if (action === lastActionSent.action && now - lastActionSent.at < gameConfig.actionDebounceMs) {
+        debugLog('🚫 Debounced duplicate game action:', action);
+        return;
+    }
+    lastActionSent = { action, at: now };
+
     debugLog('📤 Sending game action:', action);
-    
+
     if (sessionManager.connectionType === 'hybrid' && firestore) {
         const sessionDoc = firestore.collection('sessions').doc(sessionManager.connectedSession);
         const update = { lastActivity: firebase.firestore.FieldValue.serverTimestamp() };

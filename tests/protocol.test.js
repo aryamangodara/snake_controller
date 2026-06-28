@@ -210,4 +210,62 @@ describe('desktop ↔ controller protocol (localStorage fallback mode)', () => {
         // The desktop consumed the one-shot action key after handling it.
         expect(desktop.run(`localStorage.getItem('session_${SESSION}_action')`)).toBe(null);
     });
+
+    it('client-debounces a rapid duplicate action to a single transport write', () => {
+        // Reset the in-memory debounce guard so the prior test's 'restart' (sent via
+        // handleCenterButtonPress) doesn't bleed into this synchronous, sub-window run.
+        controller.run("lastActionSent = { action: null, at: 0 };");
+        // Count writes to the action key by wrapping Storage.prototype.setItem on the
+        // controller window (same technique as the joystick change-gate test above).
+        controller.run(`
+            globalThis.__actWrites = 0;
+            globalThis.__actOrig = window.Storage.prototype.setItem;
+            window.Storage.prototype.setItem = function (k, v) {
+                if (k === 'session_${SESSION}_action') globalThis.__actWrites++;
+                return globalThis.__actOrig.call(this, k, v);
+            };
+        `);
+
+        // Two identical actions back-to-back within actionDebounceMs → ONE write.
+        controller.run("sendGameAction('restart'); sendGameAction('restart');");
+        expect(controller.run('globalThis.__actWrites')).toBe(1);
+
+        // A DIFFERENT action inside the window is keyed separately → it DOES emit.
+        controller.run("sendGameAction('start');");
+        expect(controller.run('globalThis.__actWrites')).toBe(2);
+
+        // The guard is a WINDOW, not a one-shot lock: with the window collapsed to 0,
+        // the same action emits again (proves the time-boundary branch).
+        controller.run('gameConfig.actionDebounceMs = 0;');
+        controller.run("sendGameAction('start');");
+        expect(controller.run('globalThis.__actWrites')).toBe(3);
+
+        // Restore the window + the bridge's setItem so later state is unaffected.
+        controller.run('gameConfig.actionDebounceMs = 400;');
+        controller.run('window.Storage.prototype.setItem = globalThis.__actOrig;');
+    });
+
+    it('host ignore-window collapses a repeated solo action to one handled call', () => {
+        // Reset the host idempotency guard so the prior test's handled 'restart' doesn't
+        // wrongly suppress this test's first 'restart' (synchronous, sub-window run).
+        desktop.run('lastSoloAction = { action: null, at: 0, fired: false };');
+        // Drive the desktop into game over so a 'restart' is actionable.
+        desktop.run('gameState.currentState = GameState.GAME_OVER;');
+        let restarts = 0;
+        // Count restartGame invocations via a wrapper on the context's global function.
+        desktop.run(`
+            globalThis.__restarts = 0;
+            globalThis.__restartOrig = restartGame;
+            restartGame = function () { globalThis.__restarts++; return globalThis.__restartOrig.apply(this, arguments); };
+        `);
+
+        // Repeated identical action inside actionIgnoreMs → handled ONCE.
+        desktop.run("handleGameActionFromMobile('restart'); handleGameActionFromMobile('restart');");
+        restarts = desktop.run('globalThis.__restarts');
+        expect(restarts).toBe(1);
+        expect(desktop.run('gameState.currentState')).toBe('playing');
+
+        // Restore restartGame.
+        desktop.run('restartGame = globalThis.__restartOrig;');
+    });
 });

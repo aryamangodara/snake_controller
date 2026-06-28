@@ -27,14 +27,33 @@ function mpHandleDesktopStartKey() {
     mpStartRound();
 }
 
-/** Handle a per-slot action written by a phone. Idempotent: first start wins. */
+/**
+ * Handle a per-slot action written by a phone. Idempotent: first start wins.
+ * Returns true if this action was CONSUMED this snapshot (so the caller should clear it),
+ * false if it was dropped inside the per-slot ignore-window — in which case the caller must
+ * NOT re-enter the clearing-write branch, so a faster-than-clear re-write can't make the host
+ * pay a per-snapshot clear-write loop. Keyed per slot so p1 never suppresses p2.
+ */
 function mpHandleAction(slot, action) {
-    if (!mpSession.roster[slot]) return; // ghost writer — ignore
+    if (!mpSession.roster[slot]) return false; // ghost writer — ignore (nothing to clear)
+
+    const prev = mpSession.lastAction[slot];
+    const now = Date.now();
+    if (prev && prev.action === action && now - prev.at < gameConfig.actionIgnoreMs) {
+        if (!prev.fired && typeof trackEvent === 'function') {
+            trackEvent('action_throttled', { side: 'host', kind: 'mp' });
+            prev.fired = true; // one analytics event per burst, not per dropped write
+        }
+        return false; // repeated within window — drop, and do NOT issue a clearing write
+    }
+    mpSession.lastAction[slot] = { action, at: now, fired: false };
+
     if (action === 'start' && gameState.currentState === GameState.WAITING_FOR_START) {
         mpStartRound();
     } else if (action === 'restart' && gameState.currentState === GameState.GAME_OVER) {
         mpStartRound();
     }
+    return true;
 }
 
 /** Start a round for everyone currently in the roster (1 player = classic solo). */
@@ -143,8 +162,10 @@ function mpHandleDocSnapshot(doc) {
     const actions = d.gameActions || {};
     const clear = {};
     for (const slot of PLAYER_SLOTS) {
-        if (actions[slot]) {
-            mpHandleAction(slot, actions[slot]);
+        // Only clear a slot's action if mpHandleAction actually CONSUMED it. A repeat that
+        // lands inside the ignore-window returns false, so we skip the clear and avoid the
+        // per-snapshot clearing-write loop a flood would otherwise force on the host.
+        if (actions[slot] && mpHandleAction(slot, actions[slot])) {
             clear['gameActions.' + slot] = null;
         }
     }

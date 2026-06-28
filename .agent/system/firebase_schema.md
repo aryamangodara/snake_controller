@@ -99,6 +99,26 @@ shape, not identity. The following risks are **known and accepted** for this pro
   legacy flat shape over `controllers/{code}`, transiently wiping the slot children; each live
   phone's next ~33ms joystick update recreates its child (self-heals). The SW cache bump shipped
   with the feature shrinks this skew window to one reload.
+- **Write-frequency abuse (M8):** the rules validate **shape and range** of a write but place
+  **no limit on its FREQUENCY** — they cannot, without per-caller identity (Firestore/RTDB rules
+  can't count writes-per-second per anonymous caller). So a client holding the code can spam
+  `gameAction` / `gameActions.{slot}` (start/restart) or the joystick stream at the rules-permitted
+  rate. **M8 mitigation is client + host defense-in-depth, NOT a security boundary:** the phone
+  debounces a repeated same-action within `gameConfig.actionDebounceMs` (`controller.js`
+  `sendGameAction`), and the host ignores a repeated action for the same slot within
+  `gameConfig.actionIgnoreMs` and tracks a last-handled key (`network.js`
+  `handleGameActionFromMobile` for the legacy solo field; `mp-net.js` `mpHandleAction` +
+  `mpHandleDocSnapshot` per slot), so a re-delivered/spammed action collapses to **one** handled
+  action and does **not** re-enter the per-snapshot clearing-write loop (the write-amplification a
+  flood would otherwise force on the host's Firestore bill). **What this does NOT do:** a
+  determined attacker who bypasses the honest client can still write at the rules-permitted rate —
+  that remains an **accepted risk**, the same griefing class as session griefing (annoyance + cost,
+  no user data at stake). It mitigates the casual/accidental case (double-fire, rapid taps, a
+  re-delivered snapshot) and the host-side write amplification, not adversarial flooding. The host
+  emits a low-cardinality `action_throttled` GA4 event (no code/PII) once per dropped burst so the
+  probe rate is observable. The real backstops stay **console-side: the billing budget alert** and,
+  if real traffic arrives, **App Check + Anonymous Auth** (the M7 track below) — this is the
+  client/host layer that complements them.
 
 **Mitigations (console-side, owner action):** Firestore TTL on `sessions.lastActivity`, a
 billing **budget alert** as the cost tripwire, and — if real traffic ever arrives — Firebase
