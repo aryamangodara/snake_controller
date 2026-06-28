@@ -131,14 +131,65 @@
     border-color: rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.5);
 }
 .controller-interface.mp .joystick-handle {
-    background: linear-gradient(145deg, var(--player-color, var(--color-primary)),
-        rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.75));
+    /* keep the convex white highlight (mobile.css) over the player-color gradient */
+    background:
+        radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.45), transparent 55%),
+        linear-gradient(145deg, var(--player-color, var(--color-primary)),
+            rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.75));
 }
 .controller-interface.mp .center-btn {
     border-color: rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.5);
 }
+
+/* Ready/restart pulse, recolored to the player's color (keyframes can't read a
+   CSS var for color stops, so re-point at a player-colored duplicate). */
+.controller-interface.mp .center-btn:not(:disabled) {
+    border-color: rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.80);
+    animation: readyPulseMp 2.4s ease-in-out infinite;
+}
+@keyframes readyPulseMp {
+    0%, 100% {
+        box-shadow:
+            0 0 0 0 rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.45),
+            0 10px 26px -10px rgba(var(--color-slate-900-rgb), 0.45);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow:
+            0 0 0 12px rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0),
+            0 14px 30px -10px rgba(var(--color-slate-900-rgb), 0.50);
+        transform: scale(1.04);
+    }
+}
+
+/* QUEUED behind a live round: dim the stage AND freeze the glow + ready pulse so
+   a waiting player's button never keeps breathing. */
 .controller-interface.mp-queued .joystick-area { opacity: 0.35; pointer-events: none; }
+.controller-interface.mp-queued .joystick-area::before { animation: none; opacity: 0.4; }
 .controller-interface.mp-queued .center-btn { opacity: 0.35; }
+.controller-interface.mp-queued .center-btn:not(:disabled) { animation: none; }
+
+/* Status pill recolors to a calm "waiting" warning when queued (harmless safeguard;
+   the brand bar is hidden under .mp, but keeps the token semantics consistent). */
+.controller-interface.mp-queued .controller-brand .brand-status {
+    color: var(--color-warning);
+    background: rgba(var(--color-warning-rgb), 0.14);
+    border-color: rgba(var(--color-warning-rgb), 0.30);
+}
+.controller-interface.mp-queued .controller-brand .brand-status::before {
+    background: var(--color-warning);
+    box-shadow: 0 0 8px rgba(var(--color-warning-rgb), 0.9);
+}
+
+/* Reduced motion: kill the MP duplicate pulse too; keep a static inviting ring. */
+@media (prefers-reduced-motion: reduce) {
+    .controller-interface.mp .center-btn:not(:disabled) {
+        animation: none;
+        box-shadow:
+            0 0 0 4px rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.28),
+            0 10px 26px -10px rgba(var(--color-slate-900-rgb), 0.45);
+    }
+}
 
 .mp-player-banner {
     display: flex; align-items: center; gap: var(--space-8);
