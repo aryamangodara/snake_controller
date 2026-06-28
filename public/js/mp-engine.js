@@ -20,12 +20,17 @@ function startMultiplayerGame(roster) {
     gameState.currentState = GameState.PLAYING;
     gameState.lastUpdateTime = performance.now();
     gameState.lastMoveTime = performance.now();
+    // Seed this round's metric counters (round-level food total + peak combo) so the unified
+    // game_over reports an honest duration/food/combo, identical in shape to solo.
+    resetRoundMetrics(gameState);
     resetEffects();
     hideSoloHud();
     playStartSound();
     generateFood(aliveSnakes());
     mpUiHook('renderMpRoundStart');
-    trackEvent('mp_game_start', { players: roster.length });
+    // Unified game lifecycle: MP fires the SAME game_start{mode:'multi'} as solo (mp_game_start
+    // retired) so "rounds played" is one event name across modes. duration/food are 0 at start.
+    trackEvent('game_start', gameEventParams());
 }
 
 /**
@@ -59,6 +64,16 @@ function updateMultiplayerFrame(currentTime, deltaTime, moveDeltaTime) {
  * (Solo passes the constant gameConfig.baseSpeed as the reference speed; so do we.)
  */
 function updatePlayerDirection(player, frameFactor) {
+    // Staleness coast: if this slot's phone has gone quiet past inputStaleMs (a radio
+    // stall), relax the TARGET toward the current heading so the snake holds its line
+    // rather than grinding its last turn into a wall. Only neutralizes the turn target —
+    // never moves the head or changes currentSpeed. mpSession.stamps[slot] is the
+    // last-applied input time (0 before any input → not stale, so spawn pose is kept).
+    const lastTs = (typeof mpSession !== 'undefined') ? mpSession.stamps[player.slot] : 0;
+    if (isInputStale(Date.now(), lastTs, gameConfig.inputStaleMs)) {
+        player.targetDirection = player.direction;
+    }
+
     const turnStep = speedToTurnStep(
         gameConfig.turnSpeed, player.currentSpeed, gameConfig.baseSpeed,
         frameFactor, gameConfig.maxTurnSpeedFactor);
@@ -131,13 +146,33 @@ function applyFoodEaten(player) {
     const multiplier = Math.min(player.combo, gameConfig.maxCombo);
     const gained = 10 * multiplier;
     player.score += gained;
+    // Round-level analytics counters (read by gameEventParams at game_over): total fruit
+    // consumed by all players, and the peak combo reached by ANY player this round. Identical
+    // param shape to solo, so the two engines stay one comparable funnel.
+    gameState.food_eaten = (gameState.food_eaten | 0) + 1;
+    if (multiplier > (gameState.maxCombo | 0)) gameState.maxCombo = multiplier;
 
-    spawnFoodBurst(foodX, foodY, colors.food);
+    // Combo-scaled juice — the SAME logic.comboJuice curve as the solo eat block, so
+    // the two engines never visibly diverge: scaled burst, small shake at x3+, flash
+    // at maxCombo. x1 stays byte-identical to before.
+    const juice = comboJuice(multiplier, gameConfig);
+    spawnFoodBurst(foodX, foodY, colors.food, juice.intensity);
+    if (juice.shakeMag > 0) triggerShake(juice.shakeMag, juice.shakeMs);
     // The pop carries the player's head color so everyone can see WHO scored.
     spawnScorePop(foodX, foodY,
         multiplier > 1 ? `+${gained} x${multiplier}` : `+${gained}`,
         player.colors.head);
     playFoodSound(multiplier);
+
+    // In-run milestone moment, per player: toast in this player's head color + sting,
+    // once per threshold per round (the fired set resets each round via createPlayer).
+    const crossed = checkMilestones(player.score, player.milestonesFired, gameConfig);
+    if (crossed !== null) {
+        player.milestonesFired.push(crossed);
+        spawnScorePop(foodX, foodY - 28, `${crossed}!`, player.colors.head);
+        playMilestoneSound(gameConfig.milestones.indexOf(crossed));
+        trackEvent('milestone_reached', { milestone: crossed, mode: gameState.mode });
+    }
 
     generateFood(aliveSnakes());
     growTail(player.snake, gameConfig);
@@ -186,6 +221,15 @@ function checkEndCondition(deathsThisTick) {
 }
 
 /**
+ * @typedef {Object} MpResults
+ * The end-of-round summary the defeat / winner cards render from.
+ * @property {string|null} winnerSlot - winning slot, or null for a draw / 1-player round.
+ * @property {Array<string>} defeated - names of players the winner eliminated.
+ * @property {Array<{slot:string, name:string, score:number, death:(Object|null)}>} players
+ *   - per-player summary; death null = survivor.
+ */
+
+/**
  * Multiplayer terminal path — fully replaces the solo gameOver(): NO local best,
  * NO global leaderboard, NO name entry. Builds the results object the defeat /
  * winner cards render from.
@@ -207,10 +251,17 @@ function endMultiplayerGame(winnerSlot) {
     debugLog('🏁 Multiplayer round over. Winner:', winnerSlot || 'draw');
     mpUiHook('renderMpEndScreen', gameState.mpResults);
     mpNetHook('publishMpResults', gameState.mpResults);
-    trackEvent('mp_game_over', {
-        players: gameState.players.length,
+    // Unified game lifecycle: MP fires the SAME game_over{mode:'multi',…} as solo (mp_game_over
+    // retired), plus the MP-only winner_score. mode/players/duration_s/food_eaten/max_combo come
+    // from the shared builder so a GA4 funnel can union solo + MP under one event name.
+    const runParams = gameEventParams();
+    trackEvent('game_over', {
+        ...runParams,
         winner_score: winner ? winner.score : 0 // no PII — names never leave the session
     });
+    // NSM: the same stable per-round signal solo fires, + the retention tier refresh.
+    trackEvent('round_completed', { mode: runParams.mode, players: runParams.players, duration_s: runParams.duration_s });
+    recordRoundAndTier();
 }
 
 /**
@@ -259,4 +310,26 @@ function mpNetHook(name, a, b, c) {
     } catch (e) {
         console.warn('mp-net hook failed:', name, e);
     }
+}
+
+// Expose for Node/Vitest only (no-op in the browser classic-script context, where
+// `module` is undefined). Same idiom as logic.js / effects.js / share.js — inert in
+// the browser, so this adds NO runtime behavior; it only lets tests/mp-engine.test.js
+// require() the engine. The functions still read the shared-scope globals (gameConfig,
+// colors, gameState, the logic.js helpers, the side-effect hooks), so a caller must
+// provide those in scope (the test harness loads the real script chain).
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        startMultiplayerGame,
+        updateMultiplayerFrame,
+        updatePlayerDirection,
+        stepMultiplayerTick,
+        movePlayer,
+        applyFoodEaten,
+        eliminatePlayer,
+        checkEndCondition,
+        endMultiplayerGame,
+        applyPlayerJoystick,
+        hideSoloHud
+    };
 }

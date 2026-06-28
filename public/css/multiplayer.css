@@ -150,6 +150,27 @@
     background: none; border: none; cursor: pointer;
     font-size: var(--font-size-lg); padding: var(--space-2); line-height: 1;
 }
+/* In-DOM rename editor (replaces window.prompt). Mirrors the desktop #player-name input. */
+.mp-name-edit {
+    display: flex; align-items: center; gap: var(--space-8);
+}
+.mp-name-input {
+    width: 9rem; max-width: 50vw;
+    padding: var(--space-4) var(--space-8);
+    border: 1px solid rgba(var(--player-color-rgb, var(--color-teal-500-rgb)), 0.6);
+    border-radius: var(--radius-base);
+    background: var(--color-surface, rgba(0, 0, 0, 0.25));
+    color: var(--color-text); font-size: var(--font-size-md);
+    letter-spacing: 0.05em;
+}
+.mp-name-input:focus-visible { outline: var(--focus-outline); }
+.mp-name-input.lb-invalid { border-color: var(--color-error) !important; }
+.mp-name-save {
+    background: none; border: none; cursor: pointer;
+    color: var(--player-color, var(--color-primary));
+    font-size: var(--font-size-lg); padding: var(--space-2); line-height: 1;
+}
+.mp-name-save:focus-visible { outline: var(--focus-outline); }
 .mp-center-hint {
     color: var(--color-text-secondary); font-size: var(--font-size-sm);
     margin-top: var(--space-8); text-align: center;

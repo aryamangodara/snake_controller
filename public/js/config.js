@@ -42,17 +42,52 @@ function initializeFirebase() {
         // Firestore only for session management (Less frequent updates)
         firestore = firebase.firestore();
         firebaseReady = true;
-        // Analytics (GA4). Its own try/catch so an analytics failure (adblock, unsupported
-        // env) never falls into the outer catch and drops gameplay into offline mode.
+        // Analytics (GA4) is NO LONGER booted here. It is an OPT-IN, consent-gated handle:
+        // consentInit() (consent.js) decides whether to call enableAnalytics() now (returning
+        // visitor who accepted), wait for a banner click, or stay off (declined / DNT / GPC).
+        // Wrapped in its own try/catch so a consent-layer failure can never fall into the outer
+        // catch and drop gameplay into offline mode. Guarded on typeof so config.js still boots
+        // even when consent.js is absent (e.g. the jsdom protocol test loads a script subset).
         try {
-            analytics = firebase.analytics();
+            if (typeof consentInit === 'function') consentInit();
         } catch (e) {
-            console.warn('Analytics unavailable:', e);
+            console.warn('Consent init unavailable:', e);
         }
         debugLog('🚀 Firebase initialized: Realtime DB + Firestore hybrid');
     } catch (error) {
         console.warn('Firebase initialization failed:', error);
         debugLog('Running in offline mode with localStorage');
+    }
+}
+
+/**
+ * Boots the GA4 analytics handle — the ONLY place `firebase.analytics()` is ever called.
+ * OPT-IN: invoked exclusively by the consent layer (consent.js) after the user has accepted,
+ * or on load for a returning visitor who previously accepted. Until then `analytics` stays
+ * undefined and `trackEvent()` (utils.js) no-ops, so no GA cookies (`_ga*`) or `gtag` runtime
+ * boot before consent.
+ *
+ * Idempotent (early-returns if already booted) and defensive (no-ops if firebase / the
+ * analytics SDK is unavailable, e.g. offline-fallback mode). Keeps its OWN try/catch so an
+ * analytics failure (ad-block, unsupported env) never throws into the caller — preserving the
+ * load-bearing guarantee that analytics can never drop the app into offline mode.
+ */
+function enableAnalytics() {
+    if (typeof analytics !== 'undefined' && analytics) return; // already booted — don't double-init
+    if (typeof firebase === 'undefined' || !firebase || !firebase.analytics) return;
+    try {
+        analytics = firebase.analytics();
+        // Tag the GA4 session with the device role so the two audiences stay segmentable.
+        // Done here (not unconditionally in main.js) so the property is only ever set once
+        // analytics actually exists — i.e. only after consent.
+        if (analytics && typeof sessionManager !== 'undefined' && sessionManager) {
+            analytics.setUserProperties({
+                device_role: sessionManager.isDesktop ? 'desktop_host' : 'phone_controller'
+            });
+        }
+        debugLog('📊 Analytics enabled (consent granted)');
+    } catch (e) {
+        console.warn('Analytics unavailable:', e);
     }
 }
 
@@ -86,13 +121,46 @@ const gameConfig = {
     comboWindowMs: 4500, // Eat again within this window to extend the streak
     maxCombo: 6,         // Cap on the score multiplier
 
+    // Combo-scaled eat juice (pure presentation — never touches balance). A x1 eat
+    // is byte-identical to today (intensity 1, no shake); higher streaks bloom more
+    // particles + a wider ripple, kick a small shake at x3+, and flash at maxCombo.
+    comboJuiceMax: 2.2,        // intensity cap at maxCombo (particle/ripple scale)
+    comboShakeThreshold: 3,    // combo multiplier at/above which a small eat-shake fires
+    comboShakeMag: 3,          // peak px of the x3+ eat shake (vs 9 for the death shake)
+    comboShakeMs: 120,         // duration of the x3+ eat shake (vs 340 for the death shake)
+    maxComboFlashMag: 5,       // peak px of the extra kick at maxCombo (still < death shake)
+
+    // In-run milestone moments: ascending toast + sting the first time the score
+    // crosses each threshold in a run (per-player in multiplayer). Pure additive.
+    milestones: [100, 250, 500, 1000],
+
     // Optimization settings
     joystickThrottleMs: 33, // Limits joystick update frequency (~30Hz for snappier phone input)
+    joystickEpsilon: 0.04,  // Min |Δ vector| before the phone re-sends (held stick → ~0 writes); small so fine analog steering still registers
+    inputStaleMs: 400,      // Host: after this input gap, relax targetDirection toward heading so a radio stall coasts straight, not stuck-turning
     movementUpdateMs: 25,   // Frames per second interval
     
     // Connection settings
     connectionRetries: 5,
     retryDelayMs: 2000,
+    pairingNudgeMs: 20000, // Host: show the "still waiting? copy the link" nudge if no phone has connected by now
+
+    // Action rate-limiting (no-auth defense-in-depth — annoyance/write-amplification mitigation,
+    // NOT a security boundary; see .agent/system/firebase_schema.md "Write-frequency abuse").
+    actionDebounceMs: 400, // Client: ignore a REPEAT of the same action (start/restart) within this window
+    actionIgnoreMs: 400,   // Host: ignore a repeated action for the same slot within this window (idempotency)
+
+    // Multiplayer presence / host-resilience (M12). All advisory, never a security boundary.
+    rosterReapMs: 8000,    // Host: reap a roster slot whose RTDB child has never been (or is no longer) live
+                           // for this long while NOT in PLAYING — closes the claim→live "ghost roster" gap
+                           // (must comfortably exceed the claim→set round-trip so a slow-but-healthy phone
+                           // mid-handshake is never false-evicted).
+    rosterReapSweepMs: 3000, // Host: how often the reconciliation sweep runs.
+    hostStaleMs: 12000,    // Phone: during PLAYING, if no fresh Firestore snapshot (host stamps lastActivity
+                           // on every state write) for this long, surface a "host disconnected" advisory.
+                           // Set well above the longest expected healthy write gap so a quiet-but-alive
+                           // round never false-flags; it is purely advisory and self-heals on the next snapshot.
+    hostStaleCheckMs: 2000, // Phone: how often the host-staleness watchdog checks.
 
     // Multiplayer. THE single knob for player capacity: slots, colors, spawn
     // layout, lobby UI, and the claim flow all derive from it (players.js /

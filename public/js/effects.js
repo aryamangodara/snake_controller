@@ -14,19 +14,37 @@ const effects = {
     shake: { until: 0, magnitude: 0, duration: 1 }
 };
 
+// Accessibility: honor the OS "reduce motion" preference for the JS-driven juice
+// (canvas screen-shake + particle/score-pop bursts). The CSS half lives in base.css.
+// matchMedia is live, so re-reading .matches tracks runtime OS changes without re-init.
+// typeof-guarded + defaults to "motion allowed" so jsdom/Node (where matchMedia may be
+// absent) keeps the existing effects behavior for unit tests.
+const reducedMotionMql =
+    typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+function prefersReducedMotion() {
+    return !!(reducedMotionMql && reducedMotionMql.matches);
+}
+
 /**
  * Burst of particles flying outward from (x, y) plus an expanding ring — e.g. when
  * food is eaten or the snake crashes.
  * @param {number} x
  * @param {number} y
  * @param {string} color
+ * @param {number} [intensity=1] - combo-scaled juice multiplier (>= 1). At the default
+ *   of 1 the burst is byte-for-byte identical to before (10 particles, maxR 34);
+ *   higher values emit more + faster particles and a wider ripple. See logic.comboJuice.
  */
-function spawnFoodBurst(x, y, color) {
+function spawnFoodBurst(x, y, color, intensity = 1) {
+    if (prefersReducedMotion()) return;
     const now = Date.now();
-    const count = 10;
+    const scale = Math.max(1, intensity);
+    const count = Math.round(10 * scale);
     for (let i = 0; i < count; i++) {
         const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
-        const speed = 0.06 + Math.random() * 0.10; // px per ms
+        // Base px-per-ms band (0.06..0.16), widened by the intensity so streak bursts
+        // throw debris further. scale === 1 keeps the original band exactly.
+        const speed = (0.06 + Math.random() * 0.10) * scale; // px per ms
         effects.particles.push({
             x, y,
             vx: Math.cos(angle) * speed,
@@ -37,7 +55,7 @@ function spawnFoodBurst(x, y, color) {
             color: color || '#ffcf4d'
         });
     }
-    effects.ripples.push({ x, y, born: now, ttl: 380, maxR: 34, color: color || '#ffcf4d' });
+    effects.ripples.push({ x, y, born: now, ttl: 380, maxR: 34 * scale, color: color || '#ffcf4d' });
 }
 
 /**
@@ -48,6 +66,7 @@ function spawnFoodBurst(x, y, color) {
  * @param {string} color
  */
 function spawnScorePop(x, y, text, color) {
+    if (prefersReducedMotion()) return;
     effects.scorePops.push({ x, y, text, born: Date.now(), ttl: 700, color: color || '#ffffff' });
 }
 
@@ -57,6 +76,7 @@ function spawnScorePop(x, y, text, color) {
  * @param {number} durationMs
  */
 function triggerShake(magnitude, durationMs) {
+    if (prefersReducedMotion()) return;
     effects.shake = { until: Date.now() + durationMs, magnitude, duration: durationMs };
 }
 
@@ -107,8 +127,10 @@ function updateAndDrawEffects(ctx) {
         ctx.save();
         ctx.globalAlpha = 1 - t / p.ttl;
         ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 6;
+        // No per-particle shadowBlur: a burst is 10+ particles, and blurring each one
+        // re-rasterizes against the HiDPI buffer for a glow that's negligible against the
+        // food's own glow at the same spot. Keep the alpha-fade fill (matches the ripple,
+        // which already draws shadow-free above).
         ctx.beginPath();
         ctx.arc(px, py, p.size, 0, Math.PI * 2);
         ctx.fill();
@@ -146,6 +168,8 @@ function resetEffects() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         effects,
+        reducedMotionMql,
+        prefersReducedMotion,
         spawnFoodBurst,
         spawnScorePop,
         triggerShake,

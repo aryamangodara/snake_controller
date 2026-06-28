@@ -127,7 +127,265 @@ body.loaded .mobile-view {
   position: relative;
 }
 
-.btn:focus-visible {
-  outline: none;
+/* Shared keyboard focus ring (WCAG 2.4.7). Uses outline — which, unlike box-shadow,
+   is NOT clipped by the gradient pills' overflow:hidden (.social-link/.center-btn/
+   .share-btn). :focus-visible (not :focus) so mouse/touch taps draw no ring. */
+.btn:focus-visible,
+.social-link:focus-visible,
+.center-btn:focus-visible,
+.share-btn:focus-visible,
+.btn-connect:focus-visible,
+.btn-play-again:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
   box-shadow: var(--focus-ring);
+}
+
+/* Honor the OS-level "reduce motion" preference: neutralize ambient/decorative
+   animation (scrolling grid, floating particles, gradient title, glows, pulses,
+   combo pop, loss shake) globally. Uses ~0 duration — NOT display:none / animation:none
+   — so JS that re-arms animations via a reflow + animationend still settles
+   (restartComboTimer, loss/win-flash). The more-specific multiplayer.css block stays.
+   The matching JS-side canvas shake/particle gate lives in effects.js. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================
+   ANALYTICS CONSENT BANNER + PRIVACY MODAL
+   ========================================== */
+
+/* Non-modal bottom banner (desktop host only). Never blocks play. */
+.consent-banner {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-16);
+  transform: translateX(-50%);
+  z-index: 1100;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-12) var(--space-16);
+  width: min(720px, calc(100vw - var(--space-32)));
+  padding: var(--space-12) var(--space-16);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text);
+}
+
+.consent-text {
+  flex: 1 1 280px;
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  color: var(--color-text);
+}
+
+.consent-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.consent-link:focus-visible {
+  outline: var(--focus-outline);
+  border-radius: var(--radius-sm);
+}
+
+.consent-actions {
+  display: flex;
+  gap: var(--space-8);
+  flex: 0 0 auto;
+}
+
+.consent-btn-primary {
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+}
+
+.consent-btn-secondary {
+  background: var(--color-secondary);
+  color: var(--color-text);
+}
+
+/* ==========================================
+   PWA: UPDATE BANNER + INSTALL CTA
+   ========================================== */
+
+/* Non-blocking "Update available — Reload" banner. Reuses the .toast token set
+   (--color-surface, --shadow-lg, --radius-full) but has NO auto-hide timer, so it
+   never collides with the share toast's auto-dismiss. Role-agnostic (desktop + phone). */
+.sw-update-banner {
+  position: fixed;
+  bottom: var(--space-24);
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-20);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid rgba(var(--color-primary-rgb, var(--color-teal-500-rgb)), 0.5);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--font-size-sm);
+  max-width: 90vw;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-normal) var(--ease-standard),
+              transform var(--duration-normal) var(--ease-standard);
+}
+
+.sw-update-banner--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.sw-update-reload {
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+  border: none;
+  padding: var(--space-6) var(--space-16);
+  border-radius: var(--radius-full);
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.sw-update-reload:focus-visible {
+  outline: var(--focus-outline);
+}
+
+/* Install CTA — reuses .social-link header-pill sizing; only the brand accent differs. */
+.social-link.install-link {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-teal-500, var(--color-primary)));
+  color: var(--color-btn-primary-text);
+}
+
+.social-link.install-link:hover {
+  filter: brightness(1.08);
+}
+
+/* Privacy modal — reuses .leaderboard-modal / .leaderboard-panel; only additive bits below. */
+.privacy-panel {
+  text-align: left;
+  width: min(560px, 92vw);
+}
+
+.privacy-panel h2 {
+  text-align: center;
+}
+
+.privacy-body {
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  color: var(--color-text);
+}
+
+.privacy-body h3 {
+  margin-top: var(--space-16);
+  margin-bottom: var(--space-8);
+  color: var(--color-primary);
+  font-size: var(--font-size-base);
+}
+
+.privacy-body ul {
+  margin: 0 0 var(--space-8);
+  padding-left: var(--space-20);
+}
+
+.privacy-body li {
+  margin-bottom: var(--space-4);
+}
+
+.privacy-body code {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+}
+
+.privacy-note {
+  margin-top: var(--space-16);
+  color: var(--color-text-secondary);
+}
+
+/* ==========================================
+   GLOBAL ERROR RECOVERY BAR
+   ========================================== */
+
+/* Non-blocking, dismissible recovery affordance shown by the global error trap
+   (main.js showErrorRecovery). Fixed top-right so it never covers the board; only
+   its own buttons take pointer events, so canvas input outside the bar is untouched. */
+.error-recovery {
+  position: fixed;
+  top: var(--space-16);
+  right: var(--space-16);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  max-width: min(420px, calc(100vw - var(--space-32)));
+  padding: var(--space-12) var(--space-16);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.error-recovery-text {
+  flex: 1 1 auto;
+}
+
+.error-recovery-reload {
+  flex: 0 0 auto;
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+}
+
+.error-recovery-dismiss {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 0 var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.error-recovery-dismiss:hover {
+  color: var(--color-text);
+}
+
+/* Shield button — matches the .social-link sizing from desktop.css */
+.social-link.privacy-link {
+  background: var(--color-secondary);
+  color: var(--color-text);
+  border: none;
+  cursor: pointer;
+}
+
+.social-link.privacy-link:hover {
+  background: var(--color-secondary-hover);
+  transform: translateY(-3px) scale(1.05);
 }

@@ -69,6 +69,14 @@ span the funnel (`session_created`, `controller_arrival`, `controller_connected`
 auto-captures audience + `utm_*` acquisition. **Never log PII or the 6-digit session code.** Full
 reference + how to view: `.agent/system/analytics.md`.
 
+**Phone-controller capabilities (graceful degradation).** The controller leans on a cluster of
+*optional* browser APIs — `navigator.vibrate` (with an iOS `<input switch>` haptic shim), Web Share,
+async Clipboard, `crypto.randomUUID`, Web Audio, touch/pointer — each feature-detected ad hoc and
+falling back to a documented no-op when absent (iOS Safari is the primary target). The guards are
+characterized in `tests/capabilities.test.js` (present **and** absent states), and the
+capability/browser support matrix + manual re-verify checklist lives in
+`.agent/system/support_matrix.md`.
+
 ### File roles (`public/`)
 - `js/utils.js` — small shared helpers, incl. `trackEvent()` (the hardened GA4 analytics wrapper).
 - `js/logic.js` — **pure, testable** game math: joystick→angle/speed mapping, collision, turn step.

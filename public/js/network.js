@@ -18,6 +18,8 @@ async function generateNewSession() {
     }
 
     generateQRCode(sessionCode);
+    // Surface the same join URL as a copy-able link for can't-scan users.
+    setupPairingCopyLink(sessionCode);
 
     if (firebaseReady) {
         setupRobustHybridSession(sessionCode);
@@ -105,48 +107,202 @@ async function setupRobustHybridSession(sessionCode) {
         }
         debugLog('✅ Session verified in Firestore:', verification.data());
         
-        // 3. Set up Realtime Database path
+        // 3. Set up Realtime Database path. The parent ref is kept for the
+        // per-child listeners + .off()/.remove() cleanup; the host's OWN
+        // bookkeeping lives at a reserved `_host` child so the parent node holds
+        // only per-slot children (p1..p6) + that one host child. Keeping host
+        // state off the parent is what lets onDisconnect target `_host` alone, so
+        // a host socket blip can never wipe a live player's slot child.
         sessionManager.realtimeRef = database.ref(`controllers/${sessionCode}`);
+        sessionManager.hostRef = sessionManager.realtimeRef.child('_host');
         debugLog('📡 Setting up Realtime Database path...');
-        
-        // Initialize Realtime Database path
-        await sessionManager.realtimeRef.set({
-            connected: false,
-            joystick: { x: 0, y: 0 },
-            timestamp: firebase.database.ServerValue.TIMESTAMP,
-            initialized: true
-        });
-        debugLog('✅ Realtime Database path initialized');
 
-        // Auto-remove this controller node if the host disconnects, so abandoned
-        // sessions clean themselves up server-side (backstop for beforeunload).
-        sessionManager.realtimeRef.onDisconnect().remove();
-        
-        // 4. Listen for Realtime Database changes. The node carries either the
-        // legacy flat shape (an old cached phone) or per-slot children (new
-        // multiplayer phones) — both are handled so version skew degrades softly.
-        sessionManager.realtimeRef.on('value', (snapshot) => {
-            const controllerData = snapshot.val();
-            if (controllerData && controllerData.connected) {
-                // Legacy flat shape: one phone driving the solo snake.
-                handleJoystickInputFromMobile(controllerData.joystick || { x: 0, y: 0 });
-                // Fire once per session — this listener re-runs on every joystick
-                // update (~30Hz), so anything not per-frame belongs in this guard.
-                if (!sessionManager.controllerTracked) {
-                    sessionManager.controllerTracked = true;
-                    updateConnectionStatus('Mobile controller connected ✅');
-                    trackEvent('controller_connected', { side: 'desktop' });
-                }
-            }
-            // Per-slot children: route each live phone's joystick to its player.
-            if (typeof mpHandleControllerNode === 'function') {
-                mpHandleControllerNode(controllerData);
-            }
-        });
-        
+        // Initialize the host bookkeeping child (NOT the parent — no flat
+        // joystick/connected fields written by the host, so a stale phone can't
+        // confuse host writes with the legacy solo shape). BEST-EFFORT: the `_host`
+        // child is only a server-side cleanup optimization (onDisconnect removes it),
+        // NOT required for the session — joystick sync uses the per-slot/flat children,
+        // not `_host`. If the write is rejected (e.g. the `_host` rule hasn't propagated
+        // during a rollout) or hiccups, do NOT fail the whole hybrid session into
+        // localStorage; log and carry on so cross-device pairing still works.
+        try {
+            await sessionManager.hostRef.set({
+                connected: false,
+                timestamp: Date.now(),
+                initialized: true
+            });
+            // Auto-remove ONLY the host's own `_host` child if the host disconnects, so
+            // abandoned host bookkeeping cleans itself up server-side WITHOUT removing
+            // live player slot children (backstop for beforeunload's full teardown).
+            sessionManager.hostRef.onDisconnect().remove();
+            debugLog('✅ Realtime Database path initialized (_host bookkeeping set)');
+        } catch (hostErr) {
+            console.warn('Host bookkeeping (_host) unavailable — continuing without it:',
+                hostErr && hostErr.code ? hostErr.code : hostErr);
+        }
+
+        // 4. Listen for Realtime Database changes via PER-CHILD listeners so each
+        // phone's ~30Hz write wakes only its own slot (O(1) per write) instead of
+        // the whole-node fan-out a parent value listener forces (O(N^2)). Each
+        // handler filters to p1..p6 slot children and ignores `_host` + any
+        // legacy flat keys. Attached via a named helper so the error path can
+        // re-subscribe (bounded).
+        attachRealtimeListener(sessionManager.realtimeRef);
+
         // 5. Listen to Firestore for game actions (legacy single field for old
-        // phones) + the multiplayer roster/per-slot actions (mp-net.js).
-        sessionManager.firestoreUnsubscribe = sessionDoc.onSnapshot((doc) => {
+        // phones) + the multiplayer roster/per-slot actions (mp-net.js). Cached on
+        // sessionManager so resubscribeListeners() can re-attach the dropped listener.
+        sessionManager.firestoreDocRef = sessionDoc;
+        attachFirestoreListener(sessionDoc);
+
+        sessionManager.firebaseConnected = true;
+        sessionManager.sessionReady = true;
+        debugLog('🚀 Hybrid session fully ready! Mobile can now connect.');
+        updateConnectionStatus('Waiting for your phone…');
+        // Arm the "still waiting?" nudge — fires only if no phone connects in time.
+        startPairingNudge('hybrid');
+
+    } catch (error) {
+        console.error('❌ Hybrid session setup failed:', error);
+        debugLog('🔄 Falling back to localStorage...');
+        // Post-hoc degradation: Firebase was "ready" at session_created time but setup threw,
+        // so this silent drop to localStorage is invisible to session_created. Record it
+        // (no code, no PII) so both transports are observable; pairs with the phone's
+        // offline_fallback{side:'phone'}.
+        trackEvent('offline_fallback', { side: 'desktop' });
+        setupLocalStorageSession(sessionCode);
+    }
+}
+
+// Bounded re-subscribe budget per listener kind, so a permanent error (e.g.
+// permission-denied) can't spin a tight re-attach loop. After the cap we stop and
+// leave the user-facing "Reload" affordance (main.js) as the recovery path.
+let rtdbListenerRetries = 0;
+let firestoreListenerRetries = 0;
+const MAX_LISTENER_RETRIES = 3;
+const LISTENER_RETRY_BACKOFF_MS = 2000;
+
+/** Matches a per-slot controller child key (p1..p6); `_host` + legacy flat keys fail it. */
+const SLOT_KEY_RE = /^p[1-6]$/;
+
+/**
+ * Fire the one-shot "phone connected" funnel tracking (controller_connected,
+ * pairing_succeeded) + clear the pairing nudge. Idempotent per session via
+ * sessionManager.controllerTracked, so it runs on the FIRST slot child to appear
+ * and is a no-op on every subsequent joystick write.
+ */
+function trackFirstControllerConnect() {
+    if (sessionManager.controllerTracked) return;
+    // Did the timeout nudge fire before this phone connected? Capture it for the
+    // funnel BEFORE clearing, so pairing_succeeded can say whether the nudge
+    // "helped". The nudge element being visible == the timer elapsed.
+    const nudgeEl = document.getElementById('desktop-pairing-nudge');
+    const afterNudge = !!(nudgeEl && !nudgeEl.classList.contains('hidden'));
+    sessionManager.controllerTracked = true;
+    clearPairingNudge();
+    updateConnectionStatus('Phone connected ✅');
+    trackEvent('controller_connected', { side: 'desktop' });
+    trackEvent('pairing_succeeded', { after_nudge: afterNudge });
+}
+
+/**
+ * Attach the RTDB joystick listeners WITH an error callback. The host watches the
+ * controller node via PER-CHILD events (child_added / child_changed / child_removed)
+ * so each phone's ~30Hz write wakes only its own slot — O(1) per write instead of the
+ * whole-node fan-out (O(N^2)) a parent `value` listener forces.
+ *
+ * Scoping/namespace rules applied in every handler:
+ *  - Only `p[1-6]` slot children are routed by the PER-CHILD listeners; the reserved
+ *    `_host` child and any flat keys (connected/joystick/timestamp/initialized) FAIL the
+ *    slot regex and are IGNORED by them.
+ *  - A child event routes through mpHandleControllerChild (mp-net.js), which itself
+ *    applies the slot to the arena (mode==='multi') or to the classic solo snake
+ *    (1-player round), and reconciles that slot's liveness (live add/remove +
+ *    mpOnControllerLive/Gone). child_removed runs the "slot gone" branch directly.
+ *  - The SOLO/HYBRID phone does NOT write a slot child — it writes the FLAT shape
+ *    ({connected,joystick,timestamp}) directly on this parent node (controller.js
+ *    sendJoystickInput). That shape is driven by a SEPARATE `value` listener below,
+ *    which steers the classic solo snake ONLY when `gameState.mode !== 'multi'` and
+ *    early-returns during an arena round (so a stale/legacy flat phone can NOT
+ *    double-drive the solo snake while multiplayer is in progress).
+ *
+ * The two listeners never conflict on the same write: a solo flat write touches only
+ * parent keys (connected/joystick/timestamp) which the per-child slot regex rejects,
+ * and an arena slot write touches `p[1-6]` children which the flat value handler does
+ * not read (it pulls `joystick`/`timestamp` off the parent value, and early-returns in
+ * multi anyway).
+ *
+ * The last arg of each `.on()` is the error callback — on a drop (permission/network)
+ * it reports a bounded `rtdb_listener` js_error and attempts a bounded re-subscribe
+ * rather than failing silently.
+ * @param {object} ref - the RTDB parent reference (database.ref(`controllers/${code}`)).
+ */
+function attachRealtimeListener(ref) {
+    if (!ref) return;
+
+    const onSlotUpsert = (snapshot) => {
+        const slot = snapshot.key;
+        if (!SLOT_KEY_RE.test(slot)) return; // ignore `_host` + flat keys
+        const childData = snapshot.val();
+        // First slot child to appear marks the host "phone connected" (funnel +
+        // nudge clear); idempotent per session, so safe to call on every event.
+        if (childData && childData.connected) trackFirstControllerConnect();
+        if (typeof mpHandleControllerChild === 'function') {
+            mpHandleControllerChild(slot, childData);
+        }
+    };
+
+    // Solo/hybrid flat-shape handler (PRE-M4 behavior, restored). The lone phone writes
+    // {connected,joystick,timestamp} on the parent node, so read those flat fields and
+    // drive the classic solo snake — but ONLY outside an arena round. In multiplayer the
+    // arena is driven by the per-slot children above, so the flat shape is IGNORED here
+    // (M4 spec: a stale/legacy flat phone must not double-drive during an arena round).
+    const onFlatValue = (snapshot) => {
+        if (gameState.mode === 'multi') return; // arena uses per-slot children only
+        const controllerData = snapshot.val();
+        if (controllerData && controllerData.connected) {
+            // Pass the phone's real client stamp so the solo monotonic guard + coast see
+            // fresh input, exactly as before M4.
+            handleJoystickInputFromMobile(controllerData.joystick || { x: 0, y: 0 }, controllerData.timestamp);
+            // Funnel/nudge fire once per session (idempotent), safe at ~30Hz.
+            trackFirstControllerConnect();
+        }
+    };
+
+    const onError = (err) => {
+        // The listener is cancelled by Firebase on error — report + re-subscribe (bounded).
+        if (typeof reportError === 'function') reportError('rtdb_listener', err);
+        else console.error('RTDB listener error:', err);
+        resubscribeListeners('rtdb');
+    };
+
+    ref.on('child_added', onSlotUpsert, onError);
+    ref.on('child_changed', onSlotUpsert, onError);
+    ref.on('child_removed', (snapshot) => {
+        const slot = snapshot.key;
+        if (!SLOT_KEY_RE.test(slot)) return; // ignore `_host` + flat keys
+        // Slot child vanished (phone onDisconnect / pagehide): run the "gone"
+        // branch. Passing null routes mpHandleControllerChild straight to the
+        // live.delete + mpOnControllerGone path.
+        if (typeof mpHandleControllerChild === 'function') {
+            mpHandleControllerChild(slot, null);
+        }
+    }, onError);
+    // Flat-shape value listener for the solo/hybrid phone (no-ops during arena rounds).
+    ref.on('value', onFlatValue, onError);
+}
+
+/**
+ * Attach the Firestore actions/roster snapshot listener WITH an error callback.
+ * onSnapshot's 2nd arg is the error callback — on a drop it reports a bounded
+ * `firestore_listener` js_error and attempts a bounded re-subscribe. The unsubscribe
+ * handle is cached on sessionManager (beforeunload + re-subscribe both use it).
+ * @param {object} sessionDoc - the Firestore session DocumentReference.
+ */
+function attachFirestoreListener(sessionDoc) {
+    if (!sessionDoc) return;
+    sessionManager.firestoreUnsubscribe = sessionDoc.onSnapshot(
+        (doc) => {
             if (doc.exists) {
                 const data = doc.data();
                 if (data.gameAction) {
@@ -162,17 +318,46 @@ async function setupRobustHybridSession(sessionCode) {
                     mpHandleDocSnapshot(doc);
                 }
             }
+        },
+        (err) => {
+            if (typeof reportError === 'function') reportError('firestore_listener', err);
+            else console.error('Firestore listener error:', err);
+            resubscribeListeners('firestore');
         });
-        
-        sessionManager.firebaseConnected = true;
-        sessionManager.sessionReady = true;
-        debugLog('🚀 Hybrid session fully ready! Mobile can now connect.');
-        updateConnectionStatus('Waiting for mobile controller...');
-        
-    } catch (error) {
-        console.error('❌ Hybrid session setup failed:', error);
-        debugLog('🔄 Falling back to localStorage...');
-        setupLocalStorageSession(sessionCode);
+}
+
+/**
+ * Re-attach a dropped desktop listener after a short backoff, bounded by
+ * MAX_LISTENER_RETRIES per kind so a permanent error never becomes a hot loop. Guarded
+ * by firebaseReady + an active session; after the cap we stop (the Reload affordance is
+ * the user's recovery). No new event shape is written — phone side + rules untouched.
+ * @param {'rtdb'|'firestore'} kind
+ */
+function resubscribeListeners(kind) {
+    if (!firebaseReady || !sessionManager.currentSession) return;
+
+    if (kind === 'rtdb') {
+        if (rtdbListenerRetries >= MAX_LISTENER_RETRIES) return;
+        rtdbListenerRetries++;
+        setTimeout(() => {
+            if (!firebaseReady || !sessionManager.currentSession || !sessionManager.realtimeRef) return;
+            try {
+                // Detach ALL events (child_added/changed/removed) before re-attaching
+                // so a re-subscribe never stacks duplicate per-child handlers.
+                sessionManager.realtimeRef.off();
+            } catch (_e) { /* ignore — re-attaching anyway */ }
+            attachRealtimeListener(sessionManager.realtimeRef);
+        }, LISTENER_RETRY_BACKOFF_MS * rtdbListenerRetries);
+    } else if (kind === 'firestore') {
+        if (firestoreListenerRetries >= MAX_LISTENER_RETRIES) return;
+        firestoreListenerRetries++;
+        setTimeout(() => {
+            if (!firebaseReady || !sessionManager.currentSession || !sessionManager.firestoreDocRef) return;
+            if (sessionManager.firestoreUnsubscribe) {
+                try { sessionManager.firestoreUnsubscribe(); } catch (_e) { /* ignore */ }
+            }
+            attachFirestoreListener(sessionManager.firestoreDocRef);
+        }, LISTENER_RETRY_BACKOFF_MS * firestoreListenerRetries);
     }
 }
 
@@ -206,6 +391,12 @@ function waitForFirebaseReady() {
 // session setups (e.g. Firebase failing after a retry) don't stack duplicate handlers.
 let desktopStorageListenerAttached = false;
 
+// Host-side idempotency for the legacy solo action field: the last action we handled and
+// when, so a re-delivered / spammed start|restart inside gameConfig.actionIgnoreMs is a
+// no-op instead of re-firing startGame/restartGame (and the clearing write it triggers).
+// `fired` ensures the action_throttled analytics event emits ONCE per burst, not per drop.
+let lastSoloAction = { action: null, at: 0, fired: false };
+
 /**
  * LocalStorage polling backup method if Firebase fails.
  */
@@ -229,8 +420,8 @@ function setupLocalStorageSession(sessionCode) {
             if (e.key === `session_${code}_joystick`) {
                 const data = safeParse(e.newValue, {});
                 if (data.joystick) {
-                    handleJoystickInputFromMobile(data.joystick);
-                    updateConnectionStatus('Mobile controller connected (localStorage) ✅');
+                    handleJoystickInputFromMobile(data.joystick, data.timestamp);
+                    updateConnectionStatus('Phone connected (same-device test) ✅');
                 }
             } else if (e.key === `session_${code}_action`) {
                 const data = safeParse(e.newValue, {});
@@ -243,7 +434,20 @@ function setupLocalStorageSession(sessionCode) {
     }
     
     sessionManager.sessionReady = true;
-    updateConnectionStatus('Waiting for mobile controller (localStorage mode)...');
+    // Same-device (two-tab) test mode — label it so it's never mistaken for real
+    // cross-device pairing. No timeout nudge here: localStorage can't bridge two devices.
+    updateConnectionStatus('Waiting (same-device test mode)…');
+}
+
+/**
+ * Builds the controller join URL for a code (the QR target AND the copy-link target).
+ * Single source of truth so the QR, the fallback link, and the Copy-link button can
+ * never drift apart. The code lives in the URL (it's the join link) — never log it.
+ * @param {string} sessionCode - The 6-digit session code.
+ * @returns {string} `${origin}${pathname}?session=<code>`
+ */
+function buildJoinUrl(sessionCode) {
+    return `${window.location.origin}${window.location.pathname}?session=${sessionCode}`;
 }
 
 /**
@@ -253,13 +457,13 @@ function generateQRCode(sessionCode) {
     const qrContainer = document.getElementById('qr-code-container');
     const qrCanvas = document.getElementById('qr-canvas');
     const qrLoading = document.getElementById('qr-loading');
-    
+
     if (!qrContainer) return;
-    
+
     if (qrLoading) qrLoading.style.display = 'flex';
     if (qrContainer) qrContainer.style.display = 'none';
-    
-    const gameUrl = `${window.location.origin}${window.location.pathname}?session=${sessionCode}`;
+
+    const gameUrl = buildJoinUrl(sessionCode);
     let qrGenerated = false;
     
     if (typeof QRious !== 'undefined') {
@@ -331,10 +535,109 @@ function renderJoinFallback(container, sessionCode, gameUrl) {
 }
 
 /**
- * Updates joystick parameters locally from mobile pushes
+ * Wire the host pairing-card "Copy link" affordance for can't-scan users: populate the
+ * visible join-URL element and copy it to the clipboard on click. Uses navigator.clipboard
+ * when available (secure context) and gracefully falls back to selecting the URL text so the
+ * user can copy manually — never throws (mirrors triggerHaptic/trackEvent posture). The copied
+ * URL contains the 6-digit code (it's the join link); that's fine for the clipboard but the
+ * code is NEVER passed to trackEvent.
+ * @param {string} sessionCode - The 6-digit session code.
  */
-function handleJoystickInputFromMobile(joystickInput) {
+function setupPairingCopyLink(sessionCode) {
+    const gameUrl = buildJoinUrl(sessionCode);
+
+    // Render the URL via textContent/href (never innerHTML) — same XSS-safe pattern as
+    // renderJoinFallback — so the code can never inject markup.
+    const linkEl = document.getElementById('join-link');
+    if (linkEl) {
+        linkEl.href = gameUrl;
+        linkEl.textContent = gameUrl;
+    }
+
+    const btn = document.getElementById('copy-link-btn');
+    if (!btn || btn.dataset.wired === '1') return;
+    btn.dataset.wired = '1';
+
+    const confirmCopied = () => {
+        const original = btn.dataset.label || btn.textContent;
+        btn.dataset.label = original;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            btn.textContent = btn.dataset.label || 'Can\'t scan? Copy link';
+            btn.classList.remove('copied');
+        }, 2000);
+    };
+
+    const selectFallback = () => {
+        // No async clipboard API (insecure context / old browser): select the visible URL
+        // so the user can copy it manually. Best-effort; never throws.
+        try {
+            if (!linkEl) return;
+            const range = document.createRange();
+            range.selectNodeContents(linkEl);
+            const sel = window.getSelection();
+            if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+        } catch (_e) { /* selection is best-effort */ }
+    };
+
+    btn.addEventListener('click', () => {
+        // NOTE: gameUrl carries the code — keep it OUT of the analytics payload.
+        trackEvent('pairing_link_copied');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(gameUrl)
+                .then(confirmCopied)
+                .catch(() => { selectFallback(); confirmCopied(); });
+        } else {
+            selectFallback();
+            confirmCopied();
+        }
+    });
+}
+
+/**
+ * Start the single pairing-timeout nudge: after gameConfig.pairingNudgeMs with no phone
+ * connected, reveal the "still waiting?" nudge and emit pairing_nudge_shown ONCE. The
+ * callback re-checks controllerTracked to avoid racing a phone that connected late. Stashes
+ * the timer id on sessionManager so clearPairingNudge() can cancel it on the connect edge.
+ * @param {'hybrid'|'localStorage'} transport
+ */
+function startPairingNudge(transport) {
+    if (sessionManager.pairingNudgeTimer) return; // single timer per session
+    sessionManager.pairingNudgeTimer = setTimeout(() => {
+        sessionManager.pairingNudgeTimer = null;
+        if (sessionManager.controllerTracked) return; // a phone already connected
+        const nudge = document.getElementById('desktop-pairing-nudge');
+        if (nudge) nudge.classList.remove('hidden');
+        trackEvent('pairing_nudge_shown', { transport: transport });
+    }, gameConfig.pairingNudgeMs);
+}
+
+/**
+ * Cancel the pending pairing-timeout nudge (a phone connected) and hide it if shown.
+ */
+function clearPairingNudge() {
+    if (sessionManager.pairingNudgeTimer) {
+        clearTimeout(sessionManager.pairingNudgeTimer);
+        sessionManager.pairingNudgeTimer = null;
+    }
+    const nudge = document.getElementById('desktop-pairing-nudge');
+    if (nudge) nudge.classList.add('hidden');
+}
+
+/**
+ * Updates joystick parameters locally from mobile pushes (solo path).
+ * @param {{x:number,y:number}} joystickInput - the normalized vector.
+ * @param {number} [ts] - the packet's client Date.now() stamp, for the monotonic
+ *   ordering guard. Missing/non-numeric (legacy phones) is treated as "always newer".
+ */
+function handleJoystickInputFromMobile(joystickInput, ts) {
     if (gameState.currentState !== GameState.PLAYING) return;
+
+    // Drop out-of-order packets: a late older packet must not overwrite a newer
+    // heading. Compared per-source against this same source's previous stamp only.
+    if (!isNewerStamp(ts, sessionManager.lastJoystickUpdate)) return;
+    if (typeof ts === 'number' && isFinite(ts)) sessionManager.lastJoystickUpdate = ts;
 
     gameState.joystickInput = joystickInput;
 
@@ -350,8 +653,23 @@ function handleJoystickInputFromMobile(joystickInput) {
  * Process remote actions (start/restart) sent from the mobile connected device
  */
 function handleGameActionFromMobile(action) {
+    // Idempotency / ignore-window: a re-delivered or spammed copy of the same action
+    // within actionIgnoreMs is dropped before it can re-fire startGame/restartGame (and
+    // the Firestore clearing write that follows). State-based no-ops already guard a
+    // mistimed action; this additionally collapses a same-window action FLOOD to one.
+    const now = Date.now();
+    if (action === lastSoloAction.action && now - lastSoloAction.at < gameConfig.actionIgnoreMs) {
+        debugLog('🚫 Ignored repeated solo action within window:', action);
+        if (!lastSoloAction.fired && typeof trackEvent === 'function') {
+            trackEvent('action_throttled', { side: 'host', kind: 'solo' });
+            lastSoloAction.fired = true; // one analytics event per burst, not per dropped write
+        }
+        return;
+    }
+    lastSoloAction = { action, at: now, fired: false };
+
     debugLog('🎮 Handling game action:', action);
-    
+
     if (action === 'start' && gameState.currentState === GameState.WAITING_FOR_START) {
         startGame();
     } else if (action === 'restart' && gameState.currentState === GameState.GAME_OVER) {
@@ -406,6 +724,18 @@ window.addEventListener('beforeunload', function() {
     }
     if (sessionManager.realtimeRef) {
         sessionManager.realtimeRef.off();
+    }
+
+    // Tear down the host roster reconciliation sweep (M12) so its interval never leaks.
+    if (typeof mpSession !== 'undefined' && mpSession && mpSession.reconcileTimer) {
+        clearInterval(mpSession.reconcileTimer);
+        mpSession.reconcileTimer = null;
+    }
+    // Tear down the phone host-staleness watchdog (M12) too — a controller tab unloading
+    // must not leave its interval running.
+    if (typeof mpClient !== 'undefined' && mpClient && mpClient.hostWatchTimer) {
+        clearInterval(mpClient.hostWatchTimer);
+        mpClient.hostWatchTimer = null;
     }
 
     // Only the desktop host owns the session lifecycle. Remove the session on exit

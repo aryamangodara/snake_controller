@@ -145,6 +145,64 @@ function joystickToControl(input, baseSpeed, config) {
 }
 
 /**
+ * Change-gate for the phone's joystick stream: true if the new vector differs from
+ * the last SENT vector by at least `epsilon`, so a held-steady stick stops re-sending.
+ * The `(0,0)` release is always allowed through (gated only against re-sending a zero
+ * we already sent) so "stick centered" transmits exactly once and the snake coasts.
+ * Seed lastX/lastY to null (or NaN) so the very first send always goes.
+ * @param {number} x - new normalized x.
+ * @param {number} y - new normalized y.
+ * @param {(number|null)} lastX - last SENT x (null = nothing sent yet).
+ * @param {(number|null)} lastY - last SENT y (null = nothing sent yet).
+ * @param {number} epsilon - min |Δ vector| before a re-send (gameConfig.joystickEpsilon).
+ * @returns {boolean}
+ */
+function shouldSendJoystick(x, y, lastX, lastY, epsilon) {
+    // First send (no prior value) always goes.
+    if (lastX === null || lastY === null || lastX === undefined || lastY === undefined) {
+        return true;
+    }
+    const dx = x - lastX;
+    const dy = y - lastY;
+    // Release-to-center: send the zero once, but never re-send a zero we already sent.
+    if (x === 0 && y === 0) {
+        return lastX !== 0 || lastY !== 0;
+    }
+    return Math.hypot(dx, dy) >= epsilon;
+}
+
+/**
+ * Host-side monotonic ordering guard: true if `incomingTs` is NOT strictly older than the
+ * last-applied `lastTs` for that SAME source, so a late older packet can't overwrite a
+ * newer heading. Equal stamps PASS — two packets in the same millisecond are sequential
+ * (Date.now() resolution), not out-of-order, so dropping the second would wrongly discard
+ * a real input (e.g. a quick steer→release within one ms). A missing/non-numeric stamp
+ * (legacy cached phones) is treated as "always newer" so old clients keep working.
+ * @param {*} incomingTs - the packet's client Date.now() stamp.
+ * @param {number} lastTs - the last-applied stamp for this source (0 if none yet).
+ * @returns {boolean}
+ */
+function isNewerStamp(incomingTs, lastTs) {
+    if (typeof incomingTs !== 'number' || !isFinite(incomingTs)) return true;
+    return incomingTs >= (lastTs || 0);
+}
+
+/**
+ * Host-side staleness check: true if the most recent input for a source is older than
+ * `staleMs`, signalling a radio stall. The caller then relaxes targetDirection toward
+ * the current heading so the snake coasts straight instead of grinding its last turn.
+ * A `lastTs` of 0/falsy (no input yet) is NOT stale (nothing to coast from).
+ * @param {number} now - Date.now().
+ * @param {number} lastTs - when this source's last input was applied.
+ * @param {number} staleMs - gameConfig.inputStaleMs.
+ * @returns {boolean}
+ */
+function isInputStale(now, lastTs, staleMs) {
+    if (!lastTs) return false;
+    return now - lastTs > staleMs;
+}
+
+/**
  * Spawn pose for one of N players: heads sit on a ring of radius 150 around the
  * board center, facing radially OUTWARD (away from each other), bodies extending
  * back toward the center. A 1-player game keeps the classic solo pose (center,
@@ -261,6 +319,55 @@ function resolveWinner(players, justDiedSlots) {
     return { over: true, winnerSlot: winners.length === 1 ? winners[0].slot : null };
 }
 
+/**
+ * Combo-scaled eat-juice parameters — pure, so solo and multiplayer share the exact
+ * same curve by construction. Maps a (capped) combo multiplier to the visual intensity
+ * for spawnFoodBurst() and the screen-shake to fire, if any. A x1 eat returns
+ * intensity 1 + no shake, so the default juice is byte-for-byte unchanged from today.
+ * @param {number} multiplier - the capped combo multiplier (1..maxCombo).
+ * @param {object} config - gameConfig (uses maxCombo, comboJuiceMax, comboShakeThreshold,
+ *   comboShakeMag, comboShakeMs, maxComboFlashMag).
+ * @returns {{intensity:number, shakeMag:number, shakeMs:number, isMax:boolean}}
+ */
+function comboJuice(multiplier, config) {
+    const m = Math.max(1, multiplier);
+    const maxCombo = config.maxCombo || 1;
+    // Linear ramp from 1 (x1) to comboJuiceMax (at maxCombo); clamped either side.
+    const span = Math.max(1, maxCombo - 1);
+    const t = Math.min(1, (m - 1) / span);
+    const intensity = 1 + t * ((config.comboJuiceMax || 1) - 1);
+    const isMax = m >= maxCombo;
+    let shakeMag = 0;
+    let shakeMs = 0;
+    if (m >= (config.comboShakeThreshold || Infinity)) {
+        shakeMag = isMax ? (config.maxComboFlashMag || config.comboShakeMag || 0)
+            : (config.comboShakeMag || 0);
+        shakeMs = config.comboShakeMs || 0;
+    }
+    return { intensity, shakeMag, shakeMs, isMax };
+}
+
+/**
+ * In-run milestone watcher — pure, so both engines share the same crossing logic and
+ * it can be unit-tested. Returns the highest configured milestone the score has now
+ * reached that is NOT already in `firedSet`, or null if none is newly crossed.
+ * @param {number} score - the current score.
+ * @param {Array<number>|Set<number>} firedSet - milestones already toasted this run.
+ * @param {object} config - gameConfig (uses milestones).
+ * @returns {number|null} the newly-crossed milestone, or null.
+ */
+function checkMilestones(score, firedSet, config) {
+    const milestones = (config && config.milestones) || [];
+    const has = (firedSet instanceof Set)
+        ? (v) => firedSet.has(v)
+        : (v) => firedSet.indexOf(v) !== -1;
+    let crossed = null;
+    for (const m of milestones) {
+        if (score >= m && !has(m) && (crossed === null || m > crossed)) crossed = m;
+    }
+    return crossed;
+}
+
 // Expose for Node/Vitest only (no-op in the browser).
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
@@ -273,10 +380,15 @@ if (typeof module !== 'undefined' && module.exports) {
         hitsSelf,
         eatsFood,
         joystickToControl,
+        shouldSendJoystick,
+        isNewerStamp,
+        isInputStale,
         spawnPose,
         snakeFromPose,
         followSegments,
         growTail,
-        resolveWinner
+        resolveWinner,
+        comboJuice,
+        checkMilestones
     };
 }

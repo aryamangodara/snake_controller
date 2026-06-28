@@ -11,11 +11,16 @@ const {
     hitsSelf,
     eatsFood,
     joystickToControl,
+    shouldSendJoystick,
+    isNewerStamp,
+    isInputStale,
     spawnPose,
     snakeFromPose,
     followSegments,
     growTail,
     resolveWinner,
+    comboJuice,
+    checkMilestones,
 } = logic;
 
 // Mirrors the relevant fields of gameConfig (public/js/config.js).
@@ -27,6 +32,14 @@ const config = {
     foodSize: 8,
     maxSpeedBoost: 1.5,
     segmentSpacing: 15,
+    // Combo-juice + milestone tunables (mirror config.js).
+    maxCombo: 6,
+    comboJuiceMax: 2.2,
+    comboShakeThreshold: 3,
+    comboShakeMag: 3,
+    comboShakeMs: 120,
+    maxComboFlashMag: 5,
+    milestones: [100, 250, 500, 1000],
 };
 
 const TAU = 2 * Math.PI;
@@ -176,6 +189,74 @@ describe('joystickToControl', () => {
     it('clamps the speed boost at magnitude 1', () => {
         const big = joystickToControl({ x: 3, y: 4 }, 2, config); // magnitude 5
         expect(big.speed).toBeCloseTo(2 + config.maxSpeedBoost);
+    });
+});
+
+describe('shouldSendJoystick (change-gate)', () => {
+    const EPS = 0.04;
+
+    it('always sends the first vector (no prior value)', () => {
+        expect(shouldSendJoystick(0.5, 0.5, null, null, EPS)).toBe(true);
+        expect(shouldSendJoystick(0.5, 0.5, undefined, undefined, EPS)).toBe(true);
+    });
+
+    it('drops an unchanged held vector', () => {
+        expect(shouldSendJoystick(0.5, 0.5, 0.5, 0.5, EPS)).toBe(false);
+    });
+
+    it('drops a sub-epsilon nudge but sends an at/above-epsilon move', () => {
+        // Δ = 0.02 (< epsilon) → dropped
+        expect(shouldSendJoystick(0.52, 0.5, 0.5, 0.5, EPS)).toBe(false);
+        // Δ = 0.04 (== epsilon) → sent
+        expect(shouldSendJoystick(0.54, 0.5, 0.5, 0.5, EPS)).toBe(true);
+        // Δ well above epsilon → sent
+        expect(shouldSendJoystick(0.8, 0.5, 0.5, 0.5, EPS)).toBe(true);
+    });
+
+    it('always sends a (0,0) release after a non-zero, but only once', () => {
+        // release after a non-zero vector → sent even though Δ may be tiny in one axis
+        expect(shouldSendJoystick(0, 0, 0.5, 0.5, EPS)).toBe(true);
+        // re-sending a zero we already sent → dropped
+        expect(shouldSendJoystick(0, 0, 0, 0, EPS)).toBe(false);
+    });
+});
+
+describe('isNewerStamp (monotonic ordering guard)', () => {
+    it('accepts a newer-or-equal stamp (equal = same-ms sequential, not out-of-order)', () => {
+        expect(isNewerStamp(200, 100)).toBe(true);
+        expect(isNewerStamp(100, 100)).toBe(true);
+    });
+
+    it('rejects a strictly older stamp (genuinely out-of-order packet)', () => {
+        expect(isNewerStamp(50, 100)).toBe(false);
+    });
+
+    it('treats a missing/non-finite stamp as always-newer (legacy phones)', () => {
+        expect(isNewerStamp(undefined, 100)).toBe(true);
+        expect(isNewerStamp(null, 100)).toBe(true);
+        expect(isNewerStamp(NaN, 100)).toBe(true);
+        expect(isNewerStamp('x', 100)).toBe(true);
+    });
+
+    it('accepts any first stamp when none applied yet (lastTs 0)', () => {
+        expect(isNewerStamp(1, 0)).toBe(true);
+    });
+});
+
+describe('isInputStale (staleness coast)', () => {
+    const STALE = 400;
+
+    it('is not stale when no input has arrived yet (lastTs 0)', () => {
+        expect(isInputStale(1000, 0, STALE)).toBe(false);
+    });
+
+    it('is not stale within the window', () => {
+        expect(isInputStale(1300, 1000, STALE)).toBe(false); // gap 300 < 400
+        expect(isInputStale(1400, 1000, STALE)).toBe(false); // gap 400 == 400 (boundary, not yet stale)
+    });
+
+    it('is stale past the window', () => {
+        expect(isInputStale(1401, 1000, STALE)).toBe(true); // gap 401 > 400
     });
 });
 
@@ -334,5 +415,78 @@ describe('resolveWinner (last snake standing)', () => {
         // p1 died earlier with 999; p2+p3 die together now — only they contend.
         const players = [p('p1', false, 999), p('p2', false, 30), p('p3', false, 60)];
         expect(resolveWinner(players, ['p2', 'p3'])).toEqual({ over: true, winnerSlot: 'p3' });
+    });
+});
+
+describe('comboJuice (combo-scaled eat juice)', () => {
+    it('a x1 eat is byte-identical: intensity 1, no shake', () => {
+        const j = comboJuice(1, config);
+        expect(j.intensity).toBe(1);
+        expect(j.shakeMag).toBe(0);
+        expect(j.shakeMs).toBe(0);
+        expect(j.isMax).toBe(false);
+    });
+
+    it('intensity climbs monotonically with the multiplier, capped at comboJuiceMax', () => {
+        const i1 = comboJuice(1, config).intensity;
+        const i3 = comboJuice(3, config).intensity;
+        const i6 = comboJuice(6, config).intensity;
+        expect(i3).toBeGreaterThan(i1);
+        expect(i6).toBeGreaterThan(i3);
+        expect(i6).toBeCloseTo(config.comboJuiceMax); // reaches the cap at maxCombo
+    });
+
+    it('fires NO shake below comboShakeThreshold (negative case)', () => {
+        expect(comboJuice(2, config).shakeMag).toBe(0);
+    });
+
+    it('fires a SMALL shake at x3+, distinct from the 9/340 death shake', () => {
+        const j = comboJuice(3, config);
+        expect(j.shakeMag).toBe(config.comboShakeMag);
+        expect(j.shakeMs).toBe(config.comboShakeMs);
+        expect(j.shakeMag).toBeLessThan(9);
+        expect(j.shakeMs).toBeLessThan(340);
+    });
+
+    it('flashes harder at maxCombo: a bigger kick than a plain x3 eat', () => {
+        const x3 = comboJuice(3, config);
+        const max = comboJuice(config.maxCombo, config);
+        expect(max.isMax).toBe(true);
+        expect(max.shakeMag).toBe(config.maxComboFlashMag);
+        expect(max.shakeMag).toBeGreaterThan(x3.shakeMag);
+        expect(max.intensity).toBeGreaterThan(x3.intensity);
+    });
+});
+
+describe('checkMilestones (in-run milestone watcher)', () => {
+    it('returns the threshold the first time it is crossed', () => {
+        expect(checkMilestones(100, [], config)).toBe(100);
+        expect(checkMilestones(120, [], config)).toBe(100);
+    });
+
+    it('returns nothing below the first milestone', () => {
+        expect(checkMilestones(60, [], config)).toBeNull();
+    });
+
+    it('is idempotent: an already-fired threshold does not re-fire', () => {
+        expect(checkMilestones(120, [100], config)).toBeNull();
+    });
+
+    it('crosses the NEXT threshold once the score climbs past it', () => {
+        expect(checkMilestones(260, [100], config)).toBe(250);
+    });
+
+    it('returns the HIGHEST newly-crossed threshold when several are jumped at once', () => {
+        // A big multiplier eat could vault past two thresholds in one bite.
+        expect(checkMilestones(300, [], config)).toBe(250);
+    });
+
+    it('after a reset (empty fired set) the first milestone is allowed again', () => {
+        expect(checkMilestones(100, [], config)).toBe(100);
+    });
+
+    it('accepts a Set as the fired collection', () => {
+        expect(checkMilestones(120, new Set([100]), config)).toBeNull();
+        expect(checkMilestones(260, new Set([100]), config)).toBe(250);
     });
 });

@@ -14,10 +14,40 @@ function initializeDesktopGame() {
         return;
     }
     
-    ctx = canvas.getContext('2d');
+    // The board is fully opaque (renderGame paints colors.background over the whole
+    // canvas every frame), so alpha:false lets the browser skip transparent-layer
+    // compositing. (We intentionally omit the `desynchronized` low-latency hint: it
+    // routes drawing through a separate buffer with real compositing/readback quirks
+    // that can't be verified headlessly — alpha:false is the safe, bigger win.)
+    ctx = canvas.getContext('2d', { alpha: false });
     setupHiDPICanvas();
-    // Re-scale if the window moves to a screen with a different pixel ratio.
-    window.addEventListener('resize', () => { setupHiDPICanvas(); renderGame(); });
+    // Re-scale if the window moves to a screen with a different pixel ratio. Debounced
+    // so a drag-resize reallocates the backing store once at rest, not on every event.
+    window.addEventListener('resize', () => {
+        if (resizeDebounceTimer) clearTimeout(resizeDebounceTimer);
+        resizeDebounceTimer = setTimeout(() => {
+            resizeDebounceTimer = null;
+            setupHiDPICanvas();
+            renderGame();
+        }, RESIZE_DEBOUNCE_MS);
+    });
+
+    // Pause the rAF loop while the tab is hidden (no point painting an invisible board),
+    // and resume on visible. Reset the timestamps on resume so the long hidden gap
+    // doesn't feed a multi-second deltaTime into the loop (the MAX_FRAME_STEP clamp is a
+    // second line of defence). Purely additive — no other visibilitychange handler exists.
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (gameLoop) { cancelAnimationFrame(gameLoop); gameLoop = null; }
+            debugLog('⏸️ Tab hidden — pausing render loop');
+        } else if (gameState.gameRunning && !gameLoop) {
+            gameState.lastUpdateTime = performance.now();
+            gameState.lastMoveTime = performance.now();
+            lastIdlePaint = 0; // force an immediate repaint on return
+            debugLog('▶️ Tab visible — resuming render loop');
+            gameLoop = requestAnimationFrame(updateGame);
+        }
+    });
 
     generateNewSession();
     setupKeyboardControls();
@@ -150,7 +180,10 @@ function startGameLoop() {
 function startGame() {
     debugLog('🚀 Starting game with continuous snake movement!');
     gameState.currentState = GameState.PLAYING;
-    trackEvent('game_start', {});
+    // Seed this round's metric counters (duration/food/combo) BEFORE the event so the
+    // unified game_start carries a fresh mode/players shape (duration/food are 0 at start).
+    resetRoundMetrics(gameState);
+    trackEvent('game_start', gameEventParams());
     playStartSound();
     gameState.direction = 0; // Start facing right
     gameState.targetDirection = 0;
@@ -158,10 +191,12 @@ function startGame() {
     gameState.currentSpeed = gameConfig.baseSpeed;
     gameState.joystickInput = { x: 0, y: 0 };
     gameState.frameCount = 0;
+    sessionManager.lastJoystickUpdate = 0; // fresh input-ordering/coast baseline for this run
     gameState.lastUpdateTime = performance.now();
     gameState.lastMoveTime = performance.now();
     gameState.combo = 0;
     gameState.lastFoodTime = 0;
+    gameState.milestonesFired = []; // fresh run: no milestone carried over from the last
     resetEffects();
     updateComboDisplay();
 
@@ -186,6 +221,10 @@ function restartGame() {
         lastMoveTime: performance.now(),
         currentState: GameState.PLAYING
     });
+    sessionManager.lastJoystickUpdate = 0; // fresh input-ordering/coast baseline for this run
+    // Seed the new round's metric counters (the rebuilt state lacks them) so this round's
+    // game_over reports an honest duration/food/combo.
+    resetRoundMetrics(gameState);
 
     updateScore();
     resetEffects();
@@ -200,42 +239,88 @@ function restartGame() {
     updateGameStateInFirebase();
 }
 
+// Idle render throttle: in WAITING_FOR_START / GAME_OVER the board has no gameplay
+// motion (only the Date.now() food pulse keeps frames dirty), so we cap the repaint
+// to ~30fps instead of the monitor's full refresh. PLAYING is never throttled.
+const IDLE_FRAME_MS = 1000 / 30;
+let lastIdlePaint = 0;
+
+// Trailing-edge debounce for the resize handler so a drag-resize reallocates the HiDPI
+// backing store once at rest instead of thrashing it on every resize event.
+const RESIZE_DEBOUNCE_MS = 150;
+let resizeDebounceTimer = null;
+
+// Consecutive frame errors (reset on the first clean frame). A transient throw should
+// degrade to a dropped frame, but a frame that throws EVERY tick must not spin forever
+// reporting + re-arming — after this many in a row we stop the loop and show recovery.
+let consecutiveFrameErrors = 0;
+const MAX_CONSECUTIVE_FRAME_ERRORS = 10;
+
 /**
- * RequestAnimationFrame engine pulse
+ * RequestAnimationFrame engine pulse. The frame BODY is wrapped so a single throw is
+ * reported and degrades to a dropped frame instead of permanently wedging the loop —
+ * the re-arm lives OUTSIDE the try, so it runs even when the body throws. A run of
+ * MAX_CONSECUTIVE_FRAME_ERRORS throws in a row stops the loop and surfaces the recovery
+ * affordance (guards against an infinite error-spam loop).
  */
 function updateGame(currentTime) {
     if (!gameState.gameRunning) return;
-    
-    const deltaTime = currentTime - gameState.lastUpdateTime;
-    const moveDeltaTime = currentTime - gameState.lastMoveTime;
-    
-    if (gameState.currentState === GameState.PLAYING) {
-        if (gameState.mode === 'multi') {
-            // The N-snake simulation lives in mp-engine.js; solo below is untouched.
-            updateMultiplayerFrame(currentTime, deltaTime, moveDeltaTime);
-        } else {
-            // Always update direction smoothly (frame-rate-independent; needs elapsed time)
-            updateSnakeDirection(deltaTime);
 
-            // CONSTANT MOVEMENT: Snake moves every frame regardless of joystick input
-            if (moveDeltaTime >= gameConfig.movementUpdateMs) {
-                moveSnake();
-                gameState.lastMoveTime = currentTime;
-            }
+    try {
+        const deltaTime = currentTime - gameState.lastUpdateTime;
+        const moveDeltaTime = currentTime - gameState.lastMoveTime;
 
-            gameState.frameCount++;
+        if (gameState.currentState === GameState.PLAYING) {
+            if (gameState.mode === 'multi') {
+                // The N-snake simulation lives in mp-engine.js; solo below is untouched.
+                updateMultiplayerFrame(currentTime, deltaTime, moveDeltaTime);
+            } else {
+                // Always update direction smoothly (frame-rate-independent; needs elapsed time)
+                updateSnakeDirection(deltaTime);
 
-            // Expire a stale combo so the badge clears if you dawdle between bites.
-            if (gameState.combo > 0 && Date.now() - gameState.lastFoodTime > gameConfig.comboWindowMs) {
-                gameState.combo = 0;
-                updateComboDisplay();
+                // CONSTANT MOVEMENT: Snake moves every frame regardless of joystick input
+                if (moveDeltaTime >= gameConfig.movementUpdateMs) {
+                    moveSnake();
+                    gameState.lastMoveTime = currentTime;
+                }
+
+                gameState.frameCount++;
+
+                // Expire a stale combo so the badge clears if you dawdle between bites.
+                if (gameState.combo > 0 && Date.now() - gameState.lastFoodTime > gameConfig.comboWindowMs) {
+                    gameState.combo = 0;
+                    updateComboDisplay();
+                }
             }
         }
+
+        // Idle FPS cap: while not PLAYING (lobby / game-over) nothing moves except the
+        // food pulse, so repaint at ~IDLE_FRAME_MS cadence instead of every rAF. During
+        // PLAYING we always paint, so gameplay smoothness is untouched.
+        if (gameState.currentState === GameState.PLAYING) {
+            renderGame();
+        } else if (currentTime - lastIdlePaint >= IDLE_FRAME_MS) {
+            renderGame();
+            lastIdlePaint = currentTime;
+        }
+        gameState.lastUpdateTime = currentTime;
+        consecutiveFrameErrors = 0; // a clean frame resets the spam guard
+    } catch (err) {
+        consecutiveFrameErrors++;
+        // mode encoded as a NUMBER (0/1) to keep GA4 params low-cardinality.
+        if (typeof reportError === 'function') {
+            reportError('raf_loop', err, { mode: gameState.mode === 'multi' ? 1 : 0 });
+        }
+        if (typeof showErrorRecovery === 'function') showErrorRecovery();
+        // Don't kill the loop on a transient throw — but stop an unrecoverable per-frame
+        // throw from spinning forever (report + re-arm storm).
+        if (consecutiveFrameErrors >= MAX_CONSECUTIVE_FRAME_ERRORS) {
+            gameState.gameRunning = false;
+            return;
+        }
     }
-    
-    renderGame();
-    gameState.lastUpdateTime = currentTime;
-    
+
+    // Re-arm OUTSIDE the try so a thrown frame body can't wedge the loop.
     if (gameState.gameRunning) {
         gameLoop = requestAnimationFrame(updateGame);
     }
@@ -255,6 +340,15 @@ const MAX_FRAME_STEP = 3;
  * @param {number} deltaTime - ms elapsed since the previous frame.
  */
 function updateSnakeDirection(deltaTime) {
+    // Staleness coast: if the phone's input has gone quiet for longer than
+    // inputStaleMs (a radio stall), relax the TARGET toward the current heading so the
+    // snake holds its line instead of grinding its last turn. Only neutralizes the turn
+    // target — never moves the head or changes currentSpeed. Keyboard play is untouched
+    // (lastJoystickUpdate stays 0, and isInputStale is false when there's no input yet).
+    if (isInputStale(Date.now(), sessionManager.lastJoystickUpdate, gameConfig.inputStaleMs)) {
+        gameState.targetDirection = gameState.direction;
+    }
+
     const frameFactor = Math.min(deltaTime / TARGET_FRAME_MS, MAX_FRAME_STEP);
     const turnStep = speedToTurnStep(
         gameConfig.turnSpeed,
@@ -315,16 +409,36 @@ function moveSnake() {
         const multiplier = Math.min(gameState.combo, gameConfig.maxCombo);
         const gained = 10 * multiplier;
         gameState.score += gained;
+        // Per-round analytics counters (read by gameEventParams at game_over). maxCombo is a
+        // PEAK so it survives the gameState.combo = 0 reset in gameOver().
+        gameState.food_eaten = (gameState.food_eaten | 0) + 1;
+        if (multiplier > (gameState.maxCombo | 0)) gameState.maxCombo = multiplier;
         updateScore();
         updateComboDisplay();
 
-        // Juice: particle burst + ripple + floating score at the point of the bite.
-        spawnFoodBurst(foodX, foodY, colors.food);
+        // Combo-scaled juice: a x1 eat is byte-identical to before; higher streaks
+        // bloom more particles + a wider ripple, kick a small shake at x3+, and flash
+        // at maxCombo. The curve is shared with multiplayer via logic.comboJuice.
+        const juice = comboJuice(multiplier, gameConfig);
+        spawnFoodBurst(foodX, foodY, colors.food, juice.intensity);
+        if (juice.shakeMag > 0) triggerShake(juice.shakeMag, juice.shakeMs);
         spawnScorePop(foodX, foodY,
             multiplier > 1 ? `+${gained} x${multiplier}` : `+${gained}`,
             multiplier > 1 ? colors.food : '#ffffff');
 
         playFoodSound(multiplier); // ascending pitch as the streak climbs
+
+        // In-run milestone moment: fire a toast + ascending sting the first time the
+        // score crosses each gameConfig.milestones threshold this run (idempotent —
+        // the threshold is recorded so it never re-fires until the next run resets it).
+        const crossed = checkMilestones(gameState.score, gameState.milestonesFired, gameConfig);
+        if (crossed !== null) {
+            gameState.milestonesFired.push(crossed);
+            spawnScorePop(foodX, foodY - 28, `${crossed}!`, colors.accent);
+            playMilestoneSound(gameConfig.milestones.indexOf(crossed));
+            trackEvent('milestone_reached', { milestone: crossed, mode: gameState.mode });
+        }
+
         sendHapticFeedback('food');
         generateFood();
         addSnakeSegment();
@@ -363,6 +477,10 @@ function generateFood(snakes) {
     let attempts = 0;
     const maxAttempts = 30;
     const margin = gameConfig.wallMargin + gameConfig.foodSize;
+    // Compare squared distances so the per-candidate proximity check avoids sqrt/pow on
+    // the eat frame. Identical decision to `distance < segmentSpacing*2`.
+    const minDist = gameConfig.segmentSpacing * 2;
+    const minDistSq = minDist * minDist;
 
     do {
         gameState.food = {
@@ -374,10 +492,9 @@ function generateFood(snakes) {
         let tooClose = false;
         for (const body of bodies) {
             for (const segment of body) {
-                const distance = Math.sqrt(
-                    Math.pow(gameState.food.x - segment.x, 2) + Math.pow(gameState.food.y - segment.y, 2)
-                );
-                if (distance < gameConfig.segmentSpacing * 2) {
+                const dx = gameState.food.x - segment.x;
+                const dy = gameState.food.y - segment.y;
+                if (dx * dx + dy * dy < minDistSq) {
                     tooClose = true;
                     break;
                 }
@@ -401,9 +518,12 @@ function generateFood(snakes) {
  * @param {{body:string, head:string}} colorPair
  */
 function drawSnake(snake, direction, currentSpeed, baseSpeed, colorPair) {
-    // Body segments
-    ctx.shadowColor = colorPair.body;
-    ctx.shadowBlur = 8;
+    // Body segments — flat fill with NO per-segment shadowBlur. Previously every body
+    // segment set shadowBlur=8 and re-rasterized against the HiDPI buffer, making the
+    // dominant paint cost scale with snake length. The glow that carries the neon brand
+    // identity is kept on just the HEAD (below) and the FOOD (renderGame), so a frame now
+    // blurs a constant handful of shapes regardless of length. Body keeps its solid color.
+    ctx.shadowBlur = 0;
     ctx.fillStyle = colorPair.body;
 
     for (let i = 1; i < snake.length; i++) {
@@ -412,8 +532,6 @@ function drawSnake(snake, direction, currentSpeed, baseSpeed, colorPair) {
         ctx.arc(segment.x, segment.y, gameConfig.snakeSegmentSize / 2, 0, 2 * Math.PI);
         ctx.fill();
     }
-
-    ctx.shadowBlur = 0;
 
     // Head with direction indicator
     if (snake.length > 0) {
@@ -595,6 +713,13 @@ function gameOver() {
         finalScoreElement.textContent = gameState.score.toString();
     }
 
+    // Accessibility: announce the outcome to screen readers via the polite/assertive
+    // live region so a blind solo player hears the result. No PII, no session code.
+    const announcer = document.getElementById('game-announcer');
+    if (announcer) {
+        announcer.textContent = `Game over. Final score ${gameState.score}.`;
+    }
+
     // Record the run and surface a "new best" badge when earned.
     const isNewBest = recordScore(gameState.score);
     updateHighScoreDisplay();
@@ -608,10 +733,17 @@ function gameOver() {
         showNameEntry(gameState.score);
     }
 
-    // Analytics: the run's score + whether it set a new personal best. post_score is a
-    // GA4-recommended event that surfaces in the Games engagement reports.
-    trackEvent('game_over', { score: gameState.score, is_high_score: isNewBest });
+    // Analytics: the run's score + whether it set a new personal best, PLUS the unified
+    // run-shape params (mode/players/duration_s/food_eaten/max_combo) so solo and MP form one
+    // comparable funnel. maxCombo is a peak, so it survived the combo = 0 reset above.
+    // post_score is a GA4-recommended event that surfaces in the Games engagement reports.
+    const runParams = gameEventParams();
+    trackEvent('game_over', { score: gameState.score, is_high_score: isNewBest, ...runParams });
     trackEvent('post_score', { score: gameState.score });
+    // NSM: a stable per-round signal (decoupled from game_over param churn) + the retention
+    // tier refresh. mode/players/duration_s only — no score, no PII.
+    trackEvent('round_completed', { mode: runParams.mode, players: runParams.players, duration_s: runParams.duration_s });
+    recordRoundAndTier();
 
     // Hitstop: let the impact register for a beat before the modal slides in. The
     // snake is already frozen (state = GAME_OVER), so the canvas just keeps shaking.
@@ -679,8 +811,13 @@ function showNameEntry(score) {
 }
 
 /**
- * Used by desktop or network logger to show active status
+ * Used by desktop or network logger to show active host pairing status. Writes the
+ * message into the visible #desktop-pairing-status element on the pairing card (so the
+ * "Waiting for your phone…" / "Phone connected ✅" states are actually shown), and keeps
+ * the dev-only debugLog. No-ops cleanly on the controller view (element absent).
  */
 function updateConnectionStatus(status) {
     debugLog('🔗 Connection status:', status);
+    const statusEl = document.getElementById('desktop-pairing-status');
+    if (statusEl) statusEl.textContent = status;
 }

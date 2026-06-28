@@ -7,6 +7,12 @@
         "connected": { ".validate": "newData.isBoolean()" },
         "initialized": { ".validate": "newData.isBoolean()" },
         "timestamp": { ".validate": "newData.isNumber()" },
+        "_host": {
+          "connected": { ".validate": "newData.isBoolean()" },
+          "initialized": { ".validate": "newData.isBoolean()" },
+          "timestamp": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
         "joystick": {
           ".validate": "newData.hasChildren(['x', 'y'])",
           "x": { ".validate": "newData.isNumber() && newData.val() >= -1.01 && newData.val() <= 1.01" },

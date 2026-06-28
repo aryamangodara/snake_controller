@@ -17,16 +17,49 @@
     <link rel="icon" type="image/png" sizes="32x32" href="snake-favicon.png">
     <link rel="icon" type="image/png" sizes="16x16" href="snake-favicon.png">
     <link rel="apple-touch-icon" href="snake-logo.png">
+    <!-- 512 reused as a 180×180 fallback; a dedicated 180×180 asset is a follow-up. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="snake-logo-512.png">
     <meta name="theme-color" content="#21808d">
+
+    <!-- iOS standalone shell (Safari has no beforeinstallprompt; these polish the home-screen launch). -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Snake">
+
+    <!-- SEO + social share preview (Open Graph / Twitter Card).
+         Absolute URLs hard-code the production origin because OG scrapers do not run
+         JS and reject relative paths; update these in lockstep if the site is rehosted. -->
+    <meta name="description" content="Play Snake on your screen and control it with your phone as a wireless joystick. Pair with a QR code and challenge your friends.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://go-console-84748.web.app/">
+    <meta property="og:title" content="Snake — your phone is the joystick">
+    <meta property="og:description" content="Play Snake on the big screen, steer with your phone. Scan a QR code to join. Can you beat the high score?">
+    <meta property="og:image" content="https://go-console-84748.web.app/snake-logo-512.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Snake — your phone is the joystick">
+    <meta name="twitter:description" content="Play Snake on the big screen, steer with your phone. Scan a QR code to join.">
+    <meta name="twitter:image" content="https://go-console-84748.web.app/snake-logo-512.png">
 
     <!-- PWA: installable + offline shell -->
     <link rel="manifest" href="manifest.json">
     
-    <!-- Firebase CDN - v8 Compatibility Mode for Realtime Database -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"></script>
+    <!-- Firebase CDN - v8 Compatibility Mode for Realtime Database.
+         SRI-pinned to the immutable version-pinned gstatic assets: a swapped/compromised
+         SDK is hard-failed by the browser, and config.js degrades to offline/localStorage
+         mode on init failure, so a hash mismatch fails GRACEFULLY (no hard crash). -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"
+            integrity="sha384-v3Z/Xdw1sCeo6M/geW7sn1Lt9obIm7MhAk8laVV+rvYFmzuWDELOiygx7dVte2dX"
+            crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"
+            integrity="sha384-fuqdSwJXSvcAuKu5FbSJcHqHK474liv5ji8tuDnHz1rpfrnuXZPdM0oRaSK6c95L"
+            crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"
+            integrity="sha384-3LctmFHtNDZwkVOSZ0fvJZJD9XR5Og5ol/MVEfNt36gUUnSYBRJN0iFjIMbFecOg"
+            crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"
+            integrity="sha384-fLrVEtqsFKSsSqdhUNPT/TJQuLn2DmR2VbuHc1ZvJ8hL5MyJIGwHOI3Idx8HAxOY"
+            crossorigin="anonymous"></script>
     
     <!-- QR Code generation (SRI-pinned; if the hash ever mismatches the script is
          blocked and network.js renders the copyable join-link fallback instead) -->
@@ -116,13 +149,23 @@
                     <button id="leaderboard-btn" class="social-link leaderboard-link" type="button" aria-label="View leaderboard">
                         <i class="fas fa-trophy"></i>
                     </button>
+                    <button id="install-btn" class="social-link install-link" type="button" aria-label="Install app" hidden>
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button id="privacy-link" class="social-link privacy-link" type="button" aria-label="Privacy and data">
+                        <i class="fas fa-shield-halved"></i>
+                    </button>
                 </div>
             </div>
 
             <!-- Main Game Area -->
             <div class="game-area">
                 <div class="game-board-container">
-                    <canvas id="game-canvas" width="600" height="600"></canvas>
+                    <!-- Solo screen-reader live region: announces "Game over. Final score N."
+                         on the GAME_OVER transition (written by gameOver() in game.js).
+                         Mirrors the multiplayer #mp-announcer pattern. -->
+                    <span id="game-announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></span>
+                    <canvas id="game-canvas" width="600" height="600" role="img" aria-label="Snake game board"></canvas>
                     <div id="combo-display" class="combo-display hidden">
                         <span class="combo-fill"></span>
                         <span class="combo-label"></span>
@@ -159,7 +202,7 @@
                     <div class="score-card">
                         <div class="current-score">
                             <span class="score-label">Score</span>
-                            <span id="score" class="score-value">0</span>
+                            <span id="score" class="score-value" aria-live="polite" aria-atomic="true">0</span>
                         </div>
                         <div class="current-score">
                             <span class="score-label">Best</span>
@@ -207,6 +250,20 @@
                             No camera? Open this site &amp; enter
                             <span id="session-code" class="code-value">123456</span>
                         </p>
+
+                        <!-- Live host pairing status (written by updateConnectionStatus). -->
+                        <p id="desktop-pairing-status" class="pairing-status" aria-live="polite">Waiting for your phone…</p>
+
+                        <!-- Can't-scan affordance: copy the join link (incl. ?session=code) to send to a phone. -->
+                        <div class="pairing-copy">
+                            <button id="copy-link-btn" class="pairing-copy-btn" type="button">Can't scan? Copy link</button>
+                            <a id="join-link" class="pairing-copy-url" href="#" target="_blank" rel="noopener"></a>
+                        </div>
+
+                        <!-- Timeout nudge — hidden until pairingNudgeMs passes with no phone. -->
+                        <p id="desktop-pairing-nudge" class="pairing-nudge hidden" aria-live="polite">
+                            Still waiting? Make sure both devices are online — or copy the link above.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -221,6 +278,63 @@
                 <ol id="lb-list" class="lb-list hidden"></ol>
                 <p id="lb-empty" class="lb-state hidden">Be the first on the board!</p>
                 <p id="lb-error" class="lb-state hidden">Leaderboard unavailable right now.</p>
+            </div>
+        </div>
+
+        <!-- Privacy policy modal (reuses the leaderboard-modal pattern; static text, no XSS surface) -->
+        <div id="privacy-modal" class="leaderboard-modal hidden" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+            <div class="leaderboard-panel privacy-panel">
+                <button id="privacy-close" class="lb-close" type="button" aria-label="Close">&times;</button>
+                <h2 id="privacy-title">Privacy &amp; data</h2>
+                <div class="privacy-body">
+                    <p>This game uses <strong>Google Analytics (GA4)</strong> to understand how it is used —
+                    only if you accept. Analytics is <strong>off by default</strong> and never loads until you
+                    click <strong>Accept</strong>.</p>
+
+                    <h3>What is collected (only after you accept)</h3>
+                    <ul>
+                        <li>Page views, session and engagement, approximate (city-level) location with your IP anonymised.</li>
+                        <li>Device, browser and language.</li>
+                        <li>Referrer and <code>utm_*</code> campaign tags from the link you arrived on.</li>
+                        <li>Gameplay events (a game started, a game ended, a score shared, a leaderboard view, etc.).</li>
+                    </ul>
+
+                    <h3>What is never collected</h3>
+                    <ul>
+                        <li>No name, email or other personal information.</li>
+                        <li><strong>Never your 6-digit session code.</strong></li>
+                        <li>No precise location.</li>
+                    </ul>
+
+                    <h3>Cookies</h3>
+                    <p>If you accept, GA4 sets first-party cookies <code>_ga</code> and <code>_ga_G-0DFSB38H21</code>
+                    to count visits and sessions (they expire after up to ~2 years). Declining sets no analytics cookies.</p>
+
+                    <h3>Your choices</h3>
+                    <ul>
+                        <li>Click <strong>Decline</strong> to keep analytics off.</li>
+                        <li>If your browser sends <em>Do Not Track</em> or <em>Global Privacy Control</em>, analytics
+                        stays off automatically and no banner is shown.</li>
+                        <li>Clear this site's data to reset your choice and withdraw consent.</li>
+                        <li>See <a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener">how Google uses data</a>.</li>
+                    </ul>
+
+                    <p class="privacy-note">Playing the game (pairing a phone, the joystick stream, the leaderboard) is
+                    functional data you opt into by playing — it is separate from analytics and is not affected by this choice.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Non-modal analytics consent banner (desktop host only; never blocks play) -->
+        <div id="consent-banner" class="consent-banner hidden" role="region" aria-label="Privacy and analytics">
+            <p class="consent-text">
+                We use Google Analytics to understand how the game is used. No personal data or your session
+                code is collected.
+                <button id="consent-learn" class="consent-link" type="button">Privacy &amp; data</button>
+            </p>
+            <div class="consent-actions">
+                <button id="consent-decline" class="btn consent-btn-secondary" type="button">Decline</button>
+                <button id="consent-accept" class="btn consent-btn-primary" type="button">Accept</button>
             </div>
         </div>
     </div>
@@ -239,7 +353,7 @@
             <div class="connection-card">
                 <div class="input-group">
                     <label for="session-input">Enter 6-digit session code:</label>
-                    <input type="text" id="session-input" maxlength="6" placeholder="123456" pattern="[0-9]{6}">
+                    <input type="text" id="session-input" maxlength="6" placeholder="123456" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code">
                 </div>
                 
                 <button id="connect-btn" class="btn btn-connect">Connect to Game</button>
@@ -255,6 +369,11 @@
                     <span class="mp-chip-dot" aria-hidden="true"></span>
                     <span class="mp-banner-text">You're in! You are <strong id="mp-banner-name">Player 1</strong></span>
                     <button id="mp-edit-name" class="mp-edit-name" type="button" aria-label="Edit your name">✏️</button>
+                    <!-- In-DOM themed rename editor (replaces window.prompt); mirrors #name-entry. -->
+                    <span id="mp-name-edit" class="mp-name-edit hidden">
+                        <input type="text" id="mp-name-input" class="mp-name-input" maxlength="16" placeholder="Your name" autocomplete="off" aria-label="Your player name (1 to 16 characters)">
+                        <button id="mp-name-save" class="mp-name-save" type="button" aria-label="Save name">✓</button>
+                    </span>
                 </div>
 
                 <!-- Joystick Control -->
@@ -262,6 +381,10 @@
                     <div id="joystick-base" class="joystick-base">
                         <div id="joystick-handle" class="joystick-handle"></div>
                     </div>
+                    <!-- First-run hint: teaches the analog drag/speed mechanic. Revealed in
+                         showControllerInterface(), dismissed on first drag (pointer-events:none
+                         so it never swallows that drag) or after a short auto-fade timer. -->
+                    <p id="joystick-hint" class="joystick-hint hidden">Drag to steer — push further to go faster</p>
                 </div>
 
                 <!-- Center Control Button -->
@@ -300,6 +423,7 @@
     <script src="js/utils.js"></script>
     <script src="js/logic.js"></script>
     <script src="js/config.js"></script>
+    <script src="js/consent.js"></script>
     <script src="js/state.js"></script>
     <script src="js/players.js"></script>
     <script src="js/leaderboard.js"></script>
@@ -347,22 +471,112 @@
         });
     </script>
 
-    <!-- PWA: register the offline-shell service worker -->
+    <!-- PWA: register the offline-shell service worker + update banner + install CTA.
+         All logic is function-scoped inside this IIFE so no new global is added (the
+         .eslintrc.json globals list / no-undef stay untouched). -->
     <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-                navigator.serviceWorker.register('sw.js')
-                    .catch(function(err) { console.warn('Service worker registration failed:', err); });
-            });
-        }
+        (function () {
+            // ---- A. Update-available banner -------------------------------------------------
+            // An already-open tab keeps running the old in-memory JS after a new SW activates.
+            // When a NEW worker reaches 'installed' AND a controller already exists (i.e. this is
+            // an update, not a first install), surface a non-blocking "Update available — Reload".
+            var refreshing = false; // one-time guard so controllerchange can't reload-loop.
 
-        // PWA install funnel → GA4 (trackEvent is a no-op when analytics is unavailable).
-        window.addEventListener('beforeinstallprompt', function() {
-            if (typeof trackEvent === 'function') trackEvent('pwa_install', { outcome: 'prompted' });
-        });
-        window.addEventListener('appinstalled', function() {
-            if (typeof trackEvent === 'function') trackEvent('pwa_install', { outcome: 'installed' });
-        });
+            function showUpdateBanner() {
+                if (document.getElementById('sw-update-banner')) return; // already shown
+                var banner = document.createElement('div');
+                banner.id = 'sw-update-banner';
+                banner.className = 'sw-update-banner';
+                banner.setAttribute('role', 'status');
+
+                var text = document.createElement('span');
+                text.className = 'sw-update-text';
+                text.textContent = 'Update available';
+                banner.appendChild(text);
+
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'sw-update-reload';
+                btn.textContent = 'Reload';
+                btn.addEventListener('click', function () {
+                    if (typeof trackEvent === 'function') trackEvent('pwa_update', { action: 'reloaded' });
+                    // sw.js calls skipWaiting() unconditionally on install, so the new worker is
+                    // already activated by the time it reaches 'installed' — a plain reload serves
+                    // the fresh shell. The controllerchange guard below prevents a double reload.
+                    if (!refreshing) { refreshing = true; window.location.reload(); }
+                });
+                banner.appendChild(btn);
+
+                document.body.appendChild(banner);
+                // Next frame → CSS transition slides it in.
+                requestAnimationFrame(function () { banner.classList.add('sw-update-banner--visible'); });
+                if (typeof trackEvent === 'function') trackEvent('pwa_update', { action: 'shown' });
+            }
+
+            if ('serviceWorker' in navigator) {
+                // A controllerchange (new SW took control) reloads the page exactly once.
+                navigator.serviceWorker.addEventListener('controllerchange', function () {
+                    if (refreshing) return;
+                    refreshing = true;
+                    window.location.reload();
+                });
+
+                window.addEventListener('load', function () {
+                    navigator.serviceWorker.register('sw.js')
+                        .then(function (reg) {
+                            reg.addEventListener('updatefound', function () {
+                                var sw = reg.installing;
+                                if (!sw) return;
+                                sw.addEventListener('statechange', function () {
+                                    // 'installed' + an existing controller == an update (not first install).
+                                    if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+                                        showUpdateBanner();
+                                    }
+                                });
+                            });
+                        })
+                        .catch(function (err) { console.warn('Service worker registration failed:', err); });
+                });
+            }
+
+            // ---- B. Install CTA -------------------------------------------------------------
+            // Capture beforeinstallprompt, stash it, and reveal the styled #install-btn.
+            var deferredPrompt = null;
+            var installBtn = document.getElementById('install-btn');
+
+            function hideInstallBtn() {
+                deferredPrompt = null;
+                if (installBtn) installBtn.hidden = true;
+            }
+
+            window.addEventListener('beforeinstallprompt', function (e) {
+                e.preventDefault();              // stop the browser's own mini-infobar
+                deferredPrompt = e;              // stash for our button to drive later
+                if (installBtn) installBtn.hidden = false;
+                if (typeof trackEvent === 'function') trackEvent('pwa_install', { outcome: 'prompted' });
+            });
+
+            if (installBtn) {
+                installBtn.addEventListener('click', function () {
+                    if (!deferredPrompt) return;
+                    var promptEvent = deferredPrompt;
+                    deferredPrompt = null;       // a prompt can be consumed only once
+                    promptEvent.prompt();
+                    promptEvent.userChoice.then(function (choice) {
+                        // choice.outcome is 'accepted' or 'dismissed' — the real user decision.
+                        if (typeof trackEvent === 'function') {
+                            trackEvent('pwa_install', { outcome: choice.outcome });
+                        }
+                        hideInstallBtn();
+                    }).catch(function () { hideInstallBtn(); });
+                });
+            }
+
+            window.addEventListener('appinstalled', function () {
+                if (typeof trackEvent === 'function') trackEvent('pwa_install', { outcome: 'installed' });
+                hideInstallBtn();
+            });
+        })();
     </script>
 </body>
 </html>

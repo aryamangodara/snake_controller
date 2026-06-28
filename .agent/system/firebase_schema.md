@@ -77,10 +77,18 @@ exactly the keys above with the validations noted; deletes are denied. Reads use
 for rank) — no composite index needed.
 
 ## Cleanup / lifecycle
-Sessions are ephemeral. The desktop host registers `onDisconnect().remove()` on its RTDB node and
-best-effort-deletes the Firestore doc + RTDB node on `beforeunload`. For guaranteed Firestore
-cleanup, configure a **TTL policy** on the `lastActivity` field (Firebase console → Firestore →
-TTL) so abandoned sessions expire automatically.
+Sessions are ephemeral. The desktop host writes its own bookkeeping to a reserved
+`controllers/{code}/_host` child (`{connected, initialized, timestamp}`) and registers
+`onDisconnect().remove()` on **that `_host` child only** — never the parent — so a host socket
+blip removes only host bookkeeping and can never wipe a live player's `p{n}` slot child. On
+`beforeunload` the host best-effort-deletes the Firestore doc + the whole RTDB parent node (the
+deliberate full teardown when the host genuinely leaves). For guaranteed Firestore cleanup,
+configure a **TTL policy** on the `lastActivity` field (Firebase console → Firestore → TTL) so
+abandoned sessions expire automatically.
+
+The host watches `controllers/{code}` via **per-child** listeners (`child_added` /
+`child_changed` / `child_removed`) filtered to `p[1-6]` keys, so each phone's joystick write wakes
+only its own slot (O(1) per write) and the `_host` child + legacy flat keys are ignored.
 
 ## Security model & accepted risks
 There is **no authentication** — access is scoped by path shape (6-digit code) and document
@@ -95,11 +103,70 @@ shape, not identity. The following risks are **known and accepted** for this pro
 - **Multiplayer slot griefing:** the per-slot rejoin `token` in `players.{slot}` is readable by
   anyone holding the code; a malicious client can overwrite roster entries, fake actions, or spoof
   another slot's joystick. Same griefing class as session griefing — annoyance only.
-- **Stale-client RTDB clobber:** an old cached phone joining a multiplayer session writes the
-  legacy flat shape over `controllers/{code}`, transiently wiping the slot children; each live
-  phone's next ~33ms joystick update recreates its child (self-heals). The SW cache bump shipped
-  with the feature shrinks this skew window to one reload.
+- **Stale-client RTDB clobber:** an old cached phone joining a multiplayer session may write the
+  legacy flat shape over `controllers/{code}`. As of M4 the host's per-child listeners filter to
+  `p[1-6]` keys, so the host **ignores** that flat write entirely in a `mode:'multi'` round — it can
+  no longer double-drive the solo snake. A flat `set()` at the parent path still transiently
+  overwrites the slot children at the RTDB layer, but each live phone's next ~33ms per-slot write
+  recreates its child (self-heals), and the host never *consumes* the flat shape. The SW cache bump
+  shipped with the feature shrinks this skew window to one reload.
+- **Write-frequency abuse (M8):** the rules validate **shape and range** of a write but place
+  **no limit on its FREQUENCY** — they cannot, without per-caller identity (Firestore/RTDB rules
+  can't count writes-per-second per anonymous caller). So a client holding the code can spam
+  `gameAction` / `gameActions.{slot}` (start/restart) or the joystick stream at the rules-permitted
+  rate. **M8 mitigation is client + host defense-in-depth, NOT a security boundary:** the phone
+  debounces a repeated same-action within `gameConfig.actionDebounceMs` (`controller.js`
+  `sendGameAction`), and the host ignores a repeated action for the same slot within
+  `gameConfig.actionIgnoreMs` and tracks a last-handled key (`network.js`
+  `handleGameActionFromMobile` for the legacy solo field; `mp-net.js` `mpHandleAction` +
+  `mpHandleDocSnapshot` per slot), so a re-delivered/spammed action collapses to **one** handled
+  action and does **not** re-enter the per-snapshot clearing-write loop (the write-amplification a
+  flood would otherwise force on the host's Firestore bill). **What this does NOT do:** a
+  determined attacker who bypasses the honest client can still write at the rules-permitted rate —
+  that remains an **accepted risk**, the same griefing class as session griefing (annoyance + cost,
+  no user data at stake). It mitigates the casual/accidental case (double-fire, rapid taps, a
+  re-delivered snapshot) and the host-side write amplification, not adversarial flooding. The host
+  emits a low-cardinality `action_throttled` GA4 event (no code/PII) once per dropped burst so the
+  probe rate is observable. The real backstops stay **console-side: the billing budget alert** and,
+  if real traffic arrives, **App Check + Anonymous Auth** (the M7 track below) — this is the
+  client/host layer that complements them.
 
 **Mitigations (console-side, owner action):** Firestore TTL on `sessions.lastActivity`, a
 billing **budget alert** as the cost tripwire, and — if real traffic ever arrives — Firebase
 **App Check** plus Anonymous Auth with an `ownerId` on session create.
+
+### Owner pre-flight (console actions — NOT deployable by CI)
+
+These two harden the cost perimeter and **cannot** be set from this repo (CI deploys only the
+rule files, not project config). Both are safe to enable now: `lastActivity` is written as a real
+`serverTimestamp()` at every session write site (`network.js`, `controller.js`, `mp-net.js`,
+`mp-client.js`), so the TTL has a valid timestamp field to key on. Tick each box once done in the
+[Firebase console](https://console.firebase.google.com/) / [GCP console](https://console.cloud.google.com/):
+
+- [ ] **Firestore TTL policy.** Firebase console → Firestore Database → **TTL** → *Create policy*
+      on collection `sessions`, timestamp field `lastActivity`, expiry **24h**. Abandoned sessions
+      then self-expire (backstop for the host's best-effort `beforeunload` delete + RTDB
+      `onDisconnect().remove()`).
+- [ ] **GCP billing budget alert.** GCP console → Billing → **Budgets & alerts** → *Create budget*
+      scoped to this project, amount **$5–10/month**, with email alert thresholds at **50% / 90% /
+      100%**. This is the deliberate cost tripwire — it fires before a runaway-write abuse vector
+      can run up a real bill.
+
+### Field content bounds (M7)
+
+Beyond the key allow-list, the `sessions/{code}` validators **content-bound** the legacy solo
+fields so a client holding the 6-digit code cannot stuff a ~1 MiB blob (the host runs a live
+`onSnapshot`, so an inflated doc is re-read on every snapshot — a per-listener cost vector):
+
+| Field | Bound | Mirrors |
+|-------|-------|---------|
+| `connected` | `is bool` | `network.js`, `controller.js` |
+| `version` | `is number` (it is `Date.now()`, not a timestamp) | `network.js` |
+| `gameState` | `is map`, keys ⊆ `{active,score,state}`, `score` 0–100000, `state` ∈ enum | `network.js`, `mp-net.js` |
+| `feedback` | `is map`, ≤ 6 keys (size cap only — DUAL-SHAPE: flat `{type,at}` solo vs slot-keyed multi) | `network.js`, `mp-net.js` |
+| `gameAction` | `null \| 'start' \| 'restart'` (reuses `validAction`) | `controller.js` |
+| `lastActivity` | `is timestamp` (loose, not `== request.time`: `serverTimestamp()` ≠ `request.time` in every edge) | all write sites |
+
+All are **optional** (each behind a `!('field' in data)` guard), preserving the strict-superset /
+deploy-order-safe property. `results` and per-player `death` stay shallowly validated (deep array
+validation in rules is brittle — accepted risk, above).

@@ -246,7 +246,15 @@ function mpUiPhoneUpdate(d, mySlot) {
             : (joinedCount > 1 ? 'Press ▶ to start — any player can' : 'Press ▶ to start');
     }
     const edit = document.getElementById('mp-edit-name');
-    if (edit) edit.classList.toggle('hidden', st === GameState.PLAYING);
+    const editor = document.getElementById('mp-name-edit');
+    if (st === GameState.PLAYING) {
+        // Collapse any open rename editor back to the banner so it can't linger over the joystick.
+        if (editor) editor.classList.add('hidden');
+        if (edit) edit.classList.add('hidden');
+    } else if (edit) {
+        // Only re-show the ✏️ trigger if the editor isn't currently open.
+        if (!editor || editor.classList.contains('hidden')) edit.classList.remove('hidden');
+    }
 }
 
 /**
@@ -318,23 +326,58 @@ function updateMobileGameOverMp(d, mySlot) {
     lastSyncedState = st;
 }
 
-// Phone: pre-round name editing (✏️ in the banner). Persists to the shared
-// leaderboard handle and writes straight into our roster entry.
+// Phone: pre-round name editing (✏️ in the banner). Replaces the native window.prompt
+// with an in-DOM themed input mirroring the desktop #name-entry flow: autofocus,
+// maxlength=16, Enter-to-confirm, Escape-to-cancel, inline .lb-invalid + toast on reject.
+// Persists to the shared leaderboard handle and writes straight into our roster entry.
 document.addEventListener('DOMContentLoaded', () => {
-    const edit = document.getElementById('mp-edit-name');
-    if (!edit) return;
-    edit.addEventListener('click', () => {
-        const current = (typeof getPlayerName === 'function' && getPlayerName()) || '';
-        const raw = prompt('Your player name (1–16 chars):', current);
-        if (raw === null) return;
-        const clean = typeof setPlayerName === 'function' ? setPlayerName(raw) : '';
-        if (!clean) { showToast('That name didn’t work — try another.'); return; }
+    const trigger = document.getElementById('mp-edit-name');
+    const editor = document.getElementById('mp-name-edit');
+    const input = document.getElementById('mp-name-input');
+    const save = document.getElementById('mp-name-save');
+    if (!trigger || !editor || !input || !save) return;
+
+    const openEditor = () => {
+        input.value = (typeof getPlayerName === 'function' && getPlayerName()) || '';
+        input.classList.remove('lb-invalid');
+        editor.classList.remove('hidden');
+        trigger.classList.add('hidden');
+        // Same 50ms delay showNameEntry uses to dodge the mobile-keyboard focus race.
+        setTimeout(() => input.focus(), 50);
+        trackEvent('name_edit_open', { surface: 'phone' });
+    };
+
+    const closeEditor = () => {
+        editor.classList.add('hidden');
+        trigger.classList.remove('hidden');
+        input.classList.remove('lb-invalid');
+    };
+
+    const confirmName = () => {
+        // setPlayerName is the single sanitize/validate gate (1–16 chars + sanitize).
+        const clean = typeof setPlayerName === 'function' ? setPlayerName(input.value) : '';
+        if (!clean) {
+            input.classList.add('lb-invalid'); // keep editor open, don't lose typed text
+            showToast('That name didn’t work — try another.');
+            trackEvent('name_edit', { surface: 'phone', valid: false });
+            return;
+        }
         if (mpClient.slot && mpClient.sessionDocRef) {
             mpClient.sessionDocRef.update({
                 ['players.' + mpClient.slot + '.name']: clean,
                 lastActivity: firebase.firestore.FieldValue.serverTimestamp()
             }).catch(() => {});
         }
+        closeEditor();
         showToast('You are ' + clean);
+        trackEvent('name_edit', { surface: 'phone', valid: true });
+    };
+
+    trigger.addEventListener('click', openEditor);
+    save.addEventListener('click', confirmName);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmName(); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeEditor(); }
     });
+    input.addEventListener('input', () => input.classList.remove('lb-invalid'));
 });

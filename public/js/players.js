@@ -27,11 +27,31 @@ const PLAYER_SLOTS = Array.from(
 );
 
 /**
+ * @typedef {Object} Player
+ * One player's full per-round state in a multiplayer arena.
+ * @property {string} slot - 'p1'..'pN'.
+ * @property {string} name - sanitized display name.
+ * @property {{body:string,head:string,rgb:string}} colors - palette from PLAYER_COLORS.
+ * @property {Array<{x:number,y:number}>} snake - body segments (head first); [] once dead.
+ * @property {number} direction - current heading, radians.
+ * @property {number} targetDirection - joystick target heading, radians.
+ * @property {number} baseSpeed - minimum constant speed.
+ * @property {number} currentSpeed - base + input boost.
+ * @property {number} score - this player's score this round.
+ * @property {number} combo - current eat streak.
+ * @property {number} lastFoodTime - timestamp of last food eaten (combo window).
+ * @property {Array<number>} milestonesFired - score thresholds toasted this round.
+ * @property {{x:number,y:number}} joystickInput - last joystick vector.
+ * @property {boolean} alive - still in the round.
+ * @property {{cause:string, by:(string|null), at:number}|null} death - null while alive.
+ */
+
+/**
  * Build one player's full per-round state.
  * @param {string} slot - 'p1'..'pN'.
  * @param {string} name - display name synced from the phone (already sanitized).
  * @param {number} playerCount - players this round (decides the spawn layout).
- * @returns {object}
+ * @returns {Player}
  */
 function createPlayer(slot, name, playerCount) {
     // Index from the slot id itself ('p3' -> 2), not PLAYER_SLOTS.indexOf — so a
@@ -51,6 +71,7 @@ function createPlayer(slot, name, playerCount) {
         score: 0,
         combo: 0,
         lastFoodTime: 0,
+        milestonesFired: [], // score thresholds this player has toasted this round
         joystickInput: { x: 0, y: 0 },
         alive: true,
         death: null // { cause: 'wall'|'self'|'bite', by: slot|null, at: epochMs }
@@ -87,4 +108,21 @@ function aliveSnakes() {
  */
 function getPlayerBySlot(slot) {
     return gameState.players.find((p) => p.slot === slot);
+}
+
+// Expose for Node/Vitest only (no-op in the browser classic-script context, where
+// `module` is undefined). Same idiom as logic.js / effects.js / share.js — inert in
+// the browser, so this adds NO runtime behavior. The factories still read the
+// shared-scope globals (gameConfig, the logic.js pose helpers, createInitialGameState,
+// gameState), so a test must provide those before exercising these exports.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        PLAYER_COLORS,
+        PLAYER_SLOTS,
+        createPlayer,
+        createMultiplayerState,
+        alivePlayers,
+        aliveSnakes,
+        getPlayerBySlot
+    };
 }
