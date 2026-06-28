@@ -67,7 +67,8 @@ acquisition (referrer + `utm_*`). On top of that we fire custom events:
 | `mute_toggle` | `muted` (bool) | `sound.js` `toggleMute()` |
 | `leaderboard_view` | — | `leaderboard-ui.js` `openLeaderboard()` |
 | `leaderboard_submit` | `score` (number), `rank` (number; 0 = rank unknown) | `game.js` `submitAndShowRank()` |
-| `pwa_install` | `outcome` (`prompted`\|`installed`) | `index.html` install listeners |
+| `pwa_install` | `outcome` (`prompted`\|`accepted`\|`dismissed`\|`installed`) | `index.html` install listeners — `accepted`/`dismissed` are the real `userChoice.outcome` from the custom `#install-btn` CTA |
+| `pwa_update` | `action` (`shown`\|`reloaded`) | `index.html` SW-register block — `shown` when the update banner appears, `reloaded` when the user taps Reload. Measures stale-tab exposure vs. refresh rate. |
 | `consent_update` | `outcome` (`granted`) | `consent.js` `setConsent()` — fires once, only on Accept |
 | `js_error` | `reason` (`window_error`\|`unhandled_rejection`\|`raf_loop`\|`rtdb_listener`\|`firestore_listener`), `error_name` (string ≤40 = JS constructor name, NOT the message), `source_line` (number; `window_error` only), `mode` (0/1; `raf_loop` only) | `utils.js` `reportError()` via the global trap (`main.js`), the rAF guard (`game.js`), and the desktop listener error callbacks (`network.js`). Never logs `message`/`stack`/URL/session code. (Q7.) |
 

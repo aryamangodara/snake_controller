@@ -17,7 +17,15 @@
     <link rel="icon" type="image/png" sizes="32x32" href="snake-favicon.png">
     <link rel="icon" type="image/png" sizes="16x16" href="snake-favicon.png">
     <link rel="apple-touch-icon" href="snake-logo.png">
+    <!-- 512 reused as a 180×180 fallback; a dedicated 180×180 asset is a follow-up. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="snake-logo-512.png">
     <meta name="theme-color" content="#21808d">
+
+    <!-- iOS standalone shell (Safari has no beforeinstallprompt; these polish the home-screen launch). -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Snake">
 
     <!-- SEO + social share preview (Open Graph / Twitter Card).
          Absolute URLs hard-code the production origin because OG scrapers do not run
@@ -140,6 +148,9 @@
                     </button>
                     <button id="leaderboard-btn" class="social-link leaderboard-link" type="button" aria-label="View leaderboard">
                         <i class="fas fa-trophy"></i>
+                    </button>
+                    <button id="install-btn" class="social-link install-link" type="button" aria-label="Install app" hidden>
+                        <i class="fas fa-download"></i>
                     </button>
                     <button id="privacy-link" class="social-link privacy-link" type="button" aria-label="Privacy and data">
                         <i class="fas fa-shield-halved"></i>
@@ -455,22 +466,112 @@
         });
     </script>
 
-    <!-- PWA: register the offline-shell service worker -->
+    <!-- PWA: register the offline-shell service worker + update banner + install CTA.
+         All logic is function-scoped inside this IIFE so no new global is added (the
+         .eslintrc.json globals list / no-undef stay untouched). -->
     <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-                navigator.serviceWorker.register('sw.js')
-                    .catch(function(err) { console.warn('Service worker registration failed:', err); });
-            });
-        }
+        (function () {
+            // ---- A. Update-available banner -------------------------------------------------
+            // An already-open tab keeps running the old in-memory JS after a new SW activates.
+            // When a NEW worker reaches 'installed' AND a controller already exists (i.e. this is
+            // an update, not a first install), surface a non-blocking "Update available — Reload".
+            var refreshing = false; // one-time guard so controllerchange can't reload-loop.
 
-        // PWA install funnel → GA4 (trackEvent is a no-op when analytics is unavailable).
-        window.addEventListener('beforeinstallprompt', function() {
-            if (typeof trackEvent === 'function') trackEvent('pwa_install', { outcome: 'prompted' });
-        });
-        window.addEventListener('appinstalled', function() {
-            if (typeof trackEvent === 'function') trackEvent('pwa_install', { outcome: 'installed' });
-        });
+            function showUpdateBanner() {
+                if (document.getElementById('sw-update-banner')) return; // already shown
+                var banner = document.createElement('div');
+                banner.id = 'sw-update-banner';
+                banner.className = 'sw-update-banner';
+                banner.setAttribute('role', 'status');
+
+                var text = document.createElement('span');
+                text.className = 'sw-update-text';
+                text.textContent = 'Update available';
+                banner.appendChild(text);
+
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'sw-update-reload';
+                btn.textContent = 'Reload';
+                btn.addEventListener('click', function () {
+                    if (typeof trackEvent === 'function') trackEvent('pwa_update', { action: 'reloaded' });
+                    // sw.js calls skipWaiting() unconditionally on install, so the new worker is
+                    // already activated by the time it reaches 'installed' — a plain reload serves
+                    // the fresh shell. The controllerchange guard below prevents a double reload.
+                    if (!refreshing) { refreshing = true; window.location.reload(); }
+                });
+                banner.appendChild(btn);
+
+                document.body.appendChild(banner);
+                // Next frame → CSS transition slides it in.
+                requestAnimationFrame(function () { banner.classList.add('sw-update-banner--visible'); });
+                if (typeof trackEvent === 'function') trackEvent('pwa_update', { action: 'shown' });
+            }
+
+            if ('serviceWorker' in navigator) {
+                // A controllerchange (new SW took control) reloads the page exactly once.
+                navigator.serviceWorker.addEventListener('controllerchange', function () {
+                    if (refreshing) return;
+                    refreshing = true;
+                    window.location.reload();
+                });
+
+                window.addEventListener('load', function () {
+                    navigator.serviceWorker.register('sw.js')
+                        .then(function (reg) {
+                            reg.addEventListener('updatefound', function () {
+                                var sw = reg.installing;
+                                if (!sw) return;
+                                sw.addEventListener('statechange', function () {
+                                    // 'installed' + an existing controller == an update (not first install).
+                                    if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+                                        showUpdateBanner();
+                                    }
+                                });
+                            });
+                        })
+                        .catch(function (err) { console.warn('Service worker registration failed:', err); });
+                });
+            }
+
+            // ---- B. Install CTA -------------------------------------------------------------
+            // Capture beforeinstallprompt, stash it, and reveal the styled #install-btn.
+            var deferredPrompt = null;
+            var installBtn = document.getElementById('install-btn');
+
+            function hideInstallBtn() {
+                deferredPrompt = null;
+                if (installBtn) installBtn.hidden = true;
+            }
+
+            window.addEventListener('beforeinstallprompt', function (e) {
+                e.preventDefault();              // stop the browser's own mini-infobar
+                deferredPrompt = e;              // stash for our button to drive later
+                if (installBtn) installBtn.hidden = false;
+                if (typeof trackEvent === 'function') trackEvent('pwa_install', { outcome: 'prompted' });
+            });
+
+            if (installBtn) {
+                installBtn.addEventListener('click', function () {
+                    if (!deferredPrompt) return;
+                    var promptEvent = deferredPrompt;
+                    deferredPrompt = null;       // a prompt can be consumed only once
+                    promptEvent.prompt();
+                    promptEvent.userChoice.then(function (choice) {
+                        // choice.outcome is 'accepted' or 'dismissed' — the real user decision.
+                        if (typeof trackEvent === 'function') {
+                            trackEvent('pwa_install', { outcome: choice.outcome });
+                        }
+                        hideInstallBtn();
+                    }).catch(function () { hideInstallBtn(); });
+                });
+            }
+
+            window.addEventListener('appinstalled', function () {
+                if (typeof trackEvent === 'function') trackEvent('pwa_install', { outcome: 'installed' });
+                hideInstallBtn();
+            });
+        })();
     </script>
 </body>
 </html>
