@@ -99,8 +99,13 @@
 .mp-score-row--dead { opacity: 0.5; }
 .mp-score-row--dead .mp-row-score { color: var(--color-text-secondary); }
 
-/* ---------- Desktop end screen (#game-over gains .mp) ---------- */
-#game-over.mp .game-over-content:not(.mp-go-content) { display: none; }
+/* ---------- Desktop end screen (#game-over gains .mp for multiplayer) ----------
+   Solo and multiplayer share the #game-over container with two children; the `.mp`
+   class on #game-over swaps which one shows. BOTH directions must hide the other —
+   otherwise a SOLO game-over leaks the (empty) multiplayer end card beside the solo
+   card, and a multiplayer end-screen would show the solo card. */
+#game-over.mp .game-over-content:not(.mp-go-content) { display: none; } /* MP: hide the solo card */
+#game-over:not(.mp) .mp-go-content { display: none; }                   /* Solo: hide the MP end card */
 .mp-go-content { min-width: 380px; }
 #mp-winner-title {
     font-family: 'Orbitron', var(--font-family-base);
