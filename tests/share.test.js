@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import share from '../public/js/share.js';
 
-const { shareUrl } = share;
+const { shareUrl, buildShareText } = share;
 
 beforeAll(() => {
     // Match the protocol test's url shape (origin + root path, no query).
@@ -31,5 +31,35 @@ describe('shareUrl', () => {
         expect(url.searchParams.has('session')).toBe(false);
         // No 6-digit numeric code anywhere in the query string.
         expect(/\d{6}/.test(url.search)).toBe(false);
+    });
+});
+
+describe('buildShareText', () => {
+    it('solo (no context) → the classic "I scored N" caption', () => {
+        const text = buildShareText(120);
+        expect(text).toContain('I scored 120');
+        expect(text).not.toMatch(/defeated|got me|crashed/);
+    });
+
+    it("winner with named victims → 'I defeated A & B'", () => {
+        const text = buildShareText(200, { outcome: 'winner', defeated: ['Ann', 'Bo'] });
+        expect(text).toContain('I defeated Ann & Bo');
+        expect(text).toContain('200');
+    });
+
+    it("winner with an empty defeated list → 'I defeated everyone'", () => {
+        const text = buildShareText(200, { outcome: 'winner', defeated: [] });
+        expect(text).toContain('I defeated everyone');
+    });
+
+    it("eliminated by a named rival → '<name> got me this time'", () => {
+        const text = buildShareText(80, { outcome: 'eliminated', by: 'Cy' });
+        expect(text).toContain('Cy got me this time');
+        expect(text).toContain('80');
+    });
+
+    it("eliminated with no attributed rival (by:null) → 'I crashed out'", () => {
+        const text = buildShareText(80, { outcome: 'eliminated', by: null });
+        expect(text).toContain('I crashed out at 80');
     });
 });

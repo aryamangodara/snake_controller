@@ -18,5 +18,14 @@ export default defineConfig({
       '**/dist/**',
       'tests/rules.test.js',
     ],
+    // Coverage is REPORTING-ONLY and NON-BLOCKING: `npm test` (plain `vitest run`)
+    // never collects it, and there are deliberately NO thresholds, so an opt-in
+    // `npm run coverage` / `vitest run --coverage` can surface what `public/js/**` is
+    // exercised without ever failing CI. Add thresholds only in a later pass.
+    coverage: {
+      provider: 'v8',
+      include: ['public/js/**'],
+      reporter: ['text', 'html'],
+    },
   },
 });

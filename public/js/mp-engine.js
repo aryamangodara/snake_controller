@@ -294,3 +294,25 @@ function mpNetHook(name, a, b, c) {
         console.warn('mp-net hook failed:', name, e);
     }
 }
+
+// Expose for Node/Vitest only (no-op in the browser classic-script context, where
+// `module` is undefined). Same idiom as logic.js / effects.js / share.js — inert in
+// the browser, so this adds NO runtime behavior; it only lets tests/mp-engine.test.js
+// require() the engine. The functions still read the shared-scope globals (gameConfig,
+// colors, gameState, the logic.js helpers, the side-effect hooks), so a caller must
+// provide those in scope (the test harness loads the real script chain).
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        startMultiplayerGame,
+        updateMultiplayerFrame,
+        updatePlayerDirection,
+        stepMultiplayerTick,
+        movePlayer,
+        applyFoodEaten,
+        eliminatePlayer,
+        checkEndCondition,
+        endMultiplayerGame,
+        applyPlayerJoystick,
+        hideSoloHud
+    };
+}

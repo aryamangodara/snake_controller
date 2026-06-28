@@ -8,6 +8,7 @@
     "check:globals": "node scripts/check-globals.mjs",
     "format": "prettier --write \"public/**/*.{js,css,html}\" \"tests/**/*.js\"",
     "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "test:rules": "firebase emulators:exec --only firestore,database \"vitest run --config vitest.rules.config.js\""
   },
   "repository": {
@@ -19,6 +20,7 @@
   "license": "MIT",
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
+    "@vitest/coverage-v8": "^1.6.1",
     "eslint": "^8.57.0",
     "firebase": "^12.15.0",
     "firebase-tools": "^13.0.0",

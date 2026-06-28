@@ -109,3 +109,20 @@ function aliveSnakes() {
 function getPlayerBySlot(slot) {
     return gameState.players.find((p) => p.slot === slot);
 }
+
+// Expose for Node/Vitest only (no-op in the browser classic-script context, where
+// `module` is undefined). Same idiom as logic.js / effects.js / share.js — inert in
+// the browser, so this adds NO runtime behavior. The factories still read the
+// shared-scope globals (gameConfig, the logic.js pose helpers, createInitialGameState,
+// gameState), so a test must provide those before exercising these exports.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        PLAYER_COLORS,
+        PLAYER_SLOTS,
+        createPlayer,
+        createMultiplayerState,
+        alivePlayers,
+        aliveSnakes,
+        getPlayerBySlot
+    };
+}

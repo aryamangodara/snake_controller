@@ -2,10 +2,10 @@
 // classic browser <script>, but its tail exposes a Node/Vitest module.exports block,
 // so we can require it directly and assert against the `effects` buffers — no DOM /
 // canvas needed (spawnFoodBurst only pushes plain objects).
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import effectsModule from '../public/js/effects.js';
 
-const { effects, spawnFoodBurst, resetEffects } = effectsModule;
+const { effects, spawnFoodBurst, triggerShake, getShakeOffset, resetEffects } = effectsModule;
 
 describe('spawnFoodBurst intensity scaling', () => {
     beforeEach(() => resetEffects());
@@ -52,5 +52,57 @@ describe('spawnFoodBurst intensity scaling', () => {
         resetEffects();
         expect(effects.particles).toHaveLength(0);
         expect(effects.ripples).toHaveLength(0);
+    });
+});
+
+describe('triggerShake / getShakeOffset linear decay', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(1_000_000);
+        resetEffects();
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('offset magnitude decays linearly from ~peak toward zero over the duration', () => {
+        triggerShake(9, 340);
+        // Stub Math.random to its max (+1 branch) so |offset| === intensity exactly,
+        // making the linear ramp deterministically observable.
+        const rnd = vi.spyOn(Math, 'random').mockReturnValue(1);
+        try {
+            // t≈0: remaining≈duration → intensity ≈ magnitude (9).
+            const at0 = getShakeOffset();
+            expect(Math.hypot(at0.x, at0.y) / Math.SQRT2).toBeCloseTo(9, 1);
+
+            // Halfway through: intensity ≈ magnitude/2 (4.5).
+            vi.advanceTimersByTime(170);
+            const atHalf = getShakeOffset();
+            expect(Math.abs(atHalf.x)).toBeCloseTo(4.5, 1);
+
+            // Strictly decreasing as time passes.
+            expect(Math.abs(atHalf.x)).toBeLessThan(Math.abs(at0.x));
+        } finally {
+            rnd.mockRestore();
+        }
+    });
+
+    it('returns exactly {x:0, y:0} at and after the shake expires', () => {
+        triggerShake(9, 340);
+        vi.advanceTimersByTime(340); // remaining === 0
+        expect(getShakeOffset()).toEqual({ x: 0, y: 0 });
+        vi.advanceTimersByTime(1000); // well past expiry
+        expect(getShakeOffset()).toEqual({ x: 0, y: 0 });
+    });
+
+    it('with no active shake the offset is zero', () => {
+        // resetEffects() set shake.until = 0, which is already in the past.
+        expect(getShakeOffset()).toEqual({ x: 0, y: 0 });
+    });
+
+    it('resetEffects zeroes the shake (a fired shake no longer offsets)', () => {
+        triggerShake(9, 340);
+        expect(effects.shake.magnitude).toBe(9);
+        resetEffects();
+        expect(effects.shake).toEqual({ until: 0, magnitude: 0, duration: 1 });
+        expect(getShakeOffset()).toEqual({ x: 0, y: 0 });
     });
 });
