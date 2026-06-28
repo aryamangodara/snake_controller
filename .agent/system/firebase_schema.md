@@ -103,3 +103,39 @@ shape, not identity. The following risks are **known and accepted** for this pro
 **Mitigations (console-side, owner action):** Firestore TTL on `sessions.lastActivity`, a
 billing **budget alert** as the cost tripwire, and — if real traffic ever arrives — Firebase
 **App Check** plus Anonymous Auth with an `ownerId` on session create.
+
+### Owner pre-flight (console actions — NOT deployable by CI)
+
+These two harden the cost perimeter and **cannot** be set from this repo (CI deploys only the
+rule files, not project config). Both are safe to enable now: `lastActivity` is written as a real
+`serverTimestamp()` at every session write site (`network.js`, `controller.js`, `mp-net.js`,
+`mp-client.js`), so the TTL has a valid timestamp field to key on. Tick each box once done in the
+[Firebase console](https://console.firebase.google.com/) / [GCP console](https://console.cloud.google.com/):
+
+- [ ] **Firestore TTL policy.** Firebase console → Firestore Database → **TTL** → *Create policy*
+      on collection `sessions`, timestamp field `lastActivity`, expiry **24h**. Abandoned sessions
+      then self-expire (backstop for the host's best-effort `beforeunload` delete + RTDB
+      `onDisconnect().remove()`).
+- [ ] **GCP billing budget alert.** GCP console → Billing → **Budgets & alerts** → *Create budget*
+      scoped to this project, amount **$5–10/month**, with email alert thresholds at **50% / 90% /
+      100%**. This is the deliberate cost tripwire — it fires before a runaway-write abuse vector
+      can run up a real bill.
+
+### Field content bounds (M7)
+
+Beyond the key allow-list, the `sessions/{code}` validators **content-bound** the legacy solo
+fields so a client holding the 6-digit code cannot stuff a ~1 MiB blob (the host runs a live
+`onSnapshot`, so an inflated doc is re-read on every snapshot — a per-listener cost vector):
+
+| Field | Bound | Mirrors |
+|-------|-------|---------|
+| `connected` | `is bool` | `network.js`, `controller.js` |
+| `version` | `is number` (it is `Date.now()`, not a timestamp) | `network.js` |
+| `gameState` | `is map`, keys ⊆ `{active,score,state}`, `score` 0–100000, `state` ∈ enum | `network.js`, `mp-net.js` |
+| `feedback` | `is map`, ≤ 6 keys (size cap only — DUAL-SHAPE: flat `{type,at}` solo vs slot-keyed multi) | `network.js`, `mp-net.js` |
+| `gameAction` | `null \| 'start' \| 'restart'` (reuses `validAction`) | `controller.js` |
+| `lastActivity` | `is timestamp` (loose, not `== request.time`: `serverTimestamp()` ≠ `request.time` in every edge) | all write sites |
+
+All are **optional** (each behind a `!('field' in data)` guard), preserving the strict-superset /
+deploy-order-safe property. `results` and per-player `death` stay shallowly validated (deep array
+validation in rules is brittle — accepted risk, above).

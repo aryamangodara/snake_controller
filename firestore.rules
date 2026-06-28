@@ -44,6 +44,34 @@ service cloud.firestore {
         return a == null || a in ['start', 'restart'];
       }
 
+      // ---- Legacy solo field validators (content bounds, NOT just key allow-list).
+      // These cap the blast radius of a malicious client to a few hundred bytes per
+      // field instead of ~1 MiB, protecting per-listener read cost (the host runs a
+      // live onSnapshot on this doc). Each is AND-ed into validShape() behind a
+      // `!('field' in data)` guard so every field stays OPTIONAL — the strict-superset
+      // / deploy-order-safe property is preserved. Shapes mirror the ACTUAL writes:
+      // network.js, controller.js, mp-net.js (solo + multiplayer). ----
+
+      // gameState: full map on create (network.js) merged with dotted partial updates
+      // (gameState.state / gameState.score — network.js, mp-net.js). Firestore evaluates
+      // the merged result, so the validator sees the full {active?, score, state} map.
+      // `state` enum mirrors GameState in config.js. `active` is create-only and optional.
+      function validGameState(g) {
+        return g is map
+          && g.keys().hasOnly(['active', 'score', 'state'])
+          && (!('active' in g) || g.active is bool)
+          && (!('score' in g) || (g.score is number && g.score >= 0 && g.score <= 100000))
+          && (!('state' in g) || g.state in ['waiting_for_start', 'playing', 'game_over']);
+      }
+
+      // feedback is DUAL-SHAPE: solo writes a flat {type, at} map (network.js); multiplayer
+      // writes a slot-keyed map {p1: {type, at}, ...} (mp-net.js); create seeds {}. Validating
+      // inner structure would reject one of the two shapes, so we bound SIZE only (the actual
+      // cost vector): a small map caps the blob without asserting which writer produced it.
+      function validFeedback(f) {
+        return f is map && f.size() <= 6;
+      }
+
       function validGameActions(d) {
         return d.gameActions is map
           && d.gameActions.keys().hasOnly(['p1', 'p2', 'p3', 'p4', 'p5', 'p6'])
@@ -66,7 +94,16 @@ service cloud.firestore {
           && (!('gameActions' in request.resource.data) || validGameActions(request.resource.data))
           && (!('results' in request.resource.data)
               || request.resource.data.results == null
-              || request.resource.data.results is map);
+              || request.resource.data.results is map)
+          // Legacy solo fields: content-bounded so a guessed code can't stuff a ~1 MiB
+          // blob. Each optional (the `!(... in ...)` guard) — legacy + multiplayer writes
+          // never set every field, so missing fields must always pass.
+          && (!('connected' in request.resource.data) || request.resource.data.connected is bool)
+          && (!('version' in request.resource.data) || request.resource.data.version is number)
+          && (!('gameAction' in request.resource.data) || validAction(request.resource.data.gameAction))
+          && (!('gameState' in request.resource.data) || validGameState(request.resource.data.gameState))
+          && (!('feedback' in request.resource.data) || validFeedback(request.resource.data.feedback))
+          && (!('lastActivity' in request.resource.data) || request.resource.data.lastActivity is timestamp);
         // `results` and per-player `death` are desktop-written display data —
         // deep array validation in rules is brittle, so they are only shallowly
         // validated (accepted risk; see .agent/system/firebase_schema.md).

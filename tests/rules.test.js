@@ -55,14 +55,18 @@ const rtdb = () => testEnv.unauthenticatedContext().database();
 // ----- Shape fixtures (exact key sets the rules allow) -----------------------
 
 // A valid legacy/solo sessions/{code} doc: only the legacy key allowlist.
+// Field CONTENT mirrors the real desktop create write (network.js:83-98):
+// connected:bool, gameState:{active,score,state} (state in the GameState enum),
+// version:number (Date.now()), feedback:{} map, lastActivity:timestamp. These
+// shapes must pass the M7 content validators (validGameState / validFeedback).
 const soloSession = () => ({
     created: Timestamp.now(),
     connected: true,
-    gameState: 'playing',
+    gameState: { active: true, score: 0, state: 'waiting_for_start' },
     gameAction: null,
     lastActivity: Timestamp.now(),
     version: 2,
-    feedback: null,
+    feedback: {},
 });
 
 // A valid player sub-object (validPlayer): exact key set, all fields in range.
@@ -233,6 +237,151 @@ describe('Firestore sessions/{code}', () => {
                 gameActions: { p1: 'pause' },
             }),
         );
+    });
+
+    // ---- M7: content validators for the legacy solo fields -------------------
+    // Seed a valid doc with rules disabled, then exercise the partial-update path
+    // the app actually uses (network.js / mp-net.js write dotted fields, which
+    // Firestore merges into the full doc before validShape() evaluates it).
+    const sref = () => doc(db(), 'sessions', CODE);
+    async function seedSession(data = soloSession()) {
+        await testEnv.withSecurityRulesDisabled(async (ctx) => {
+            await setDoc(doc(ctx.firestore(), 'sessions', CODE), data);
+        });
+    }
+
+    it('allows the solo gameState partial update (state+score) [network.js:574-577]', async () => {
+        await seedSession();
+        await assertSucceeds(
+            updateDoc(sref(), {
+                'gameState.state': 'playing',
+                'gameState.score': 42,
+                lastActivity: serverTimestamp(),
+            }),
+        );
+    });
+
+    // A 2-player roster: both slots are FULLY claimed (validPlayer) before any
+    // per-slot score/feedback write targets them — exactly the real flow, where a
+    // phone claims its slot (mp-client.js) before mp-net.js writes players.pN.score.
+    const multiSession2 = () => ({
+        ...multiSession(),
+        players: { p1: validPlayer(), p2: validPlayer() },
+    });
+
+    it('allows the MP round-start update (gameState.state + per-slot reset) [mp-net.js:60-70]', async () => {
+        await seedSession(multiSession2());
+        await assertSucceeds(
+            updateDoc(sref(), {
+                'gameState.state': 'playing',
+                results: null,
+                'players.p1.alive': true,
+                'players.p1.score': 0,
+                lastActivity: serverTimestamp(),
+            }),
+        );
+    });
+
+    it('allows a solo flat feedback write { type, at } [network.js:599-602]', async () => {
+        await seedSession();
+        await assertSucceeds(
+            updateDoc(sref(), {
+                feedback: { type: 'food', at: 123456 },
+                lastActivity: serverTimestamp(),
+            }),
+        );
+    });
+
+    it('allows a multiplayer slot-keyed feedback write feedback.p2 [mp-net.js:74-80]', async () => {
+        await seedSession(multiSession2());
+        await assertSucceeds(
+            updateDoc(sref(), {
+                'feedback.p2': { type: 'food', at: 123456 },
+                'players.p2.score': 5,
+                lastActivity: serverTimestamp(),
+            }),
+        );
+    });
+
+    it('allows the mobile connected:true update [controller.js:377-380]', async () => {
+        await seedSession();
+        await assertSucceeds(
+            updateDoc(sref(), { connected: true, lastActivity: serverTimestamp() }),
+        );
+    });
+
+    it("allows the mobile gameAction:'start' update [controller.js:633-635]", async () => {
+        await seedSession();
+        await assertSucceeds(
+            updateDoc(sref(), { gameAction: 'start', lastActivity: serverTimestamp() }),
+        );
+    });
+
+    // --- Negative: the new content bounds reject oversized / wrong-typed fields.
+
+    it("denies gameState.state outside the enum ('cheating')", async () => {
+        await assertFails(
+            setDoc(sref(), {
+                ...soloSession(),
+                gameState: { active: true, score: 0, state: 'cheating' },
+            }),
+        );
+    });
+
+    it('denies gameState.score above 100000', async () => {
+        await assertFails(
+            setDoc(sref(), {
+                ...soloSession(),
+                gameState: { active: true, score: 9999999, state: 'playing' },
+            }),
+        );
+    });
+
+    it('denies a negative gameState.score', async () => {
+        await assertFails(
+            setDoc(sref(), {
+                ...soloSession(),
+                gameState: { active: true, score: -1, state: 'playing' },
+            }),
+        );
+    });
+
+    it('denies an unknown key inside gameState (gameState.evil)', async () => {
+        await assertFails(
+            setDoc(sref(), {
+                ...soloSession(),
+                gameState: { active: true, score: 0, state: 'playing', evil: 1 },
+            }),
+        );
+    });
+
+    it('denies a non-bool connected field (string)', async () => {
+        await assertFails(setDoc(sref(), { ...soloSession(), connected: 'yes' }));
+    });
+
+    it('denies a non-number version field (string)', async () => {
+        await assertFails(setDoc(sref(), { ...soloSession(), version: 'v2' }));
+    });
+
+    it('denies an oversized feedback map (> 6 keys, blob proxy)', async () => {
+        await assertFails(
+            setDoc(sref(), {
+                ...soloSession(),
+                feedback: { p1: 1, p2: 2, p3: 3, p4: 4, p5: 5, p6: 6, p7: 7 },
+            }),
+        );
+    });
+
+    it('denies a non-map feedback field (string)', async () => {
+        await assertFails(setDoc(sref(), { ...soloSession(), feedback: 'x' }));
+    });
+
+    it('denies a non-timestamp lastActivity (number)', async () => {
+        await assertFails(setDoc(sref(), { ...soloSession(), lastActivity: 123 }));
+    });
+
+    it("denies a legacy gameAction outside null|'start'|'restart' ('pause')", async () => {
+        await assertFails(setDoc(sref(), { ...soloSession(), gameAction: 'pause' }));
     });
 });
 

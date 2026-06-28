@@ -36,11 +36,22 @@
     <!-- PWA: installable + offline shell -->
     <link rel="manifest" href="manifest.json">
     
-    <!-- Firebase CDN - v8 Compatibility Mode for Realtime Database -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"></script>
+    <!-- Firebase CDN - v8 Compatibility Mode for Realtime Database.
+         SRI-pinned to the immutable version-pinned gstatic assets: a swapped/compromised
+         SDK is hard-failed by the browser, and config.js degrades to offline/localStorage
+         mode on init failure, so a hash mismatch fails GRACEFULLY (no hard crash). -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"
+            integrity="sha384-v3Z/Xdw1sCeo6M/geW7sn1Lt9obIm7MhAk8laVV+rvYFmzuWDELOiygx7dVte2dX"
+            crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"
+            integrity="sha384-fuqdSwJXSvcAuKu5FbSJcHqHK474liv5ji8tuDnHz1rpfrnuXZPdM0oRaSK6c95L"
+            crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"
+            integrity="sha384-3LctmFHtNDZwkVOSZ0fvJZJD9XR5Og5ol/MVEfNt36gUUnSYBRJN0iFjIMbFecOg"
+            crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"
+            integrity="sha384-fLrVEtqsFKSsSqdhUNPT/TJQuLn2DmR2VbuHc1ZvJ8hL5MyJIGwHOI3Idx8HAxOY"
+            crossorigin="anonymous"></script>
     
     <!-- QR Code generation (SRI-pinned; if the hash ever mismatches the script is
          blocked and network.js renders the copyable join-link fallback instead) -->
