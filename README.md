@@ -28,7 +28,7 @@ Scan a QR code and your phone becomes a wireless, analog joystick.
 
 ## ✨ Features
 
-- 📱 **Phone-as-controller** — a custom touch joystick streamed to the desktop in near real-time over Firebase.
+- 📱 **Phone-as-controller** — a polished, responsive analog joystick (notch / safe-area aware) streamed to the desktop in near real-time over Firebase.
 - 🎯 **Analog, continuous-angle movement** — steer by angle; magnitude controls speed. No grid-snapping.
 - ⚔️ **2–3 player versus** — friends scan the *same* QR to join; one shared fruit, distinct snake colors, bite a rival and *you* die — **last snake standing wins** ("I defeated…" bragging cards included).
 - 🔥 **Combo streaks** — chain quick eats for a score multiplier, shown as a draining yellow timer badge.
@@ -37,9 +37,10 @@ Scan a QR code and your phone becomes a wireless, analog joystick.
 - 🏆 **Global leaderboard** — pick a handle and compete worldwide; see "You ranked #N globally" after every run.
 - 📳 **Haptics + loss flash** — the phone buzzes on loss (Android; best-effort iOS) with an on-screen shake where it can't.
 - 🤳 **Flex your score** — share to WhatsApp, X, Facebook, or Instagram straight from your phone.
-- ⚡ **Offline-ready PWA** — installable, with a network-first service worker.
+- 🛰️ **Resilient sessions** — presence tracking with `onDisconnect`, host-takeover reconcile, and stale-player eviction keep multiplayer rounds clean when a phone drops or the host refreshes.
+- ⚡ **Offline-ready PWA** — installable, with a network-first service worker and an "update available" reload prompt.
 - 🛟 **Single-device fallback** — a `localStorage` mode kicks in automatically when Firebase isn't available.
-- 📊 **Audience analytics** — Google Analytics 4 for audience + campaign insight, tagged desktop-host vs. phone-controller. IP-anonymized, and it never blocks gameplay.
+- 🔒 **Privacy-first analytics** — Google Analytics 4 is **off by default** and never loads until you accept the consent banner (it also honors Do-Not-Track / Global Privacy Control). IP-anonymized, tagged desktop-host vs. phone-controller, and it never blocks gameplay.
 
 ---
 

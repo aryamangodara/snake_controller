@@ -364,6 +364,14 @@
         <!-- Controller Interface - Joystick Style -->
         <div id="controller-interface" class="controller-interface">
             <div class="joystick-container">
+                <!-- Top status bar (decorative). Fills the top zone in SOLO; hidden in
+                     multiplayer (via .controller-interface.mp .controller-brand) so the
+                     identity banner below owns the row. aria-hidden — no a11y/JS surface. -->
+                <div class="controller-brand" aria-hidden="true">
+                    <span class="brand-name">Snake</span>
+                    <span class="brand-status">Connected</span>
+                </div>
+
                 <!-- Multiplayer identity banner: "You are ● Player 2 — Sam" -->
                 <div id="mp-player-banner" class="mp-player-banner hidden">
                     <span class="mp-chip-dot" aria-hidden="true"></span>

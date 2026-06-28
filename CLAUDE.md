@@ -13,16 +13,19 @@ https://go-console-84748.web.app/
 - `npm install` — install dev tooling (`firebase-tools`, `eslint`, `vitest`, `prettier`).
 - `npm start` — serve `public/` locally (`npx serve -s public`). Open the printed URL; append
   `?session=123456` to force the mobile/controller view in a second tab/device.
-- `npm run lint` (ESLint) · `npm test` (Vitest — pure-logic unit tests in `tests/`) ·
-  `npm run format` (Prettier).
+- `npm run lint` (ESLint) · `npm run check:globals` (the single-scope globals guard — see Gotchas) ·
+  `npm test` (Vitest — pure-logic unit tests in `tests/`) · `npm run test:rules` (Firestore/RTDB
+  security-rule tests against the emulators; needs Java) · `npm run format` (Prettier).
 - **Deploy is automatic** on push to `master` via GitHub Actions
   (`.github/workflows/deploy.yml`, "Fast Deploy - CI/CD"), which runs `firebase deploy --only
   hosting,firestore,database` — the static site **and both rule sets** ship together, so
   `firestore.rules` / `database.rules.json` in this repo are the source of truth. Do **not** run
   `firebase deploy` by hand against production; test rule changes on a scratch project first
   (`.agent/workflows/deploy.md`).
-- CI is **blocking**: `lint`, `test` (Vitest, incl. the jsdom protocol smoke test in
-  `tests/protocol.test.js`), and a `node --check` syntax pass must all succeed before deploy.
+- CI is **blocking** (`.github/workflows/deploy.yml`), in order: `lint` → `check:globals`
+  (globals-list drift) → `test` (Vitest, incl. the jsdom protocol smoke test in
+  `tests/protocol.test.js`) → `test:rules` (emulated Firestore/RTDB security-rule assertions, allow
+  **and** deny) → a `node --check` syntax pass — all must succeed before deploy.
 
 ## Architecture (the non-obvious parts)
 
@@ -30,9 +33,9 @@ https://go-console-84748.web.app/
 order, all sharing one global scope:
 
 ```
-utils.js → logic.js → config.js → state.js → players.js → leaderboard.js → leaderboard-ui.js →
-sound.js → effects.js → mp-engine.js → network.js → mp-net.js → game.js → share.js → mp-ui.js →
-controller.js → mp-client.js → main.js
+utils.js → logic.js → config.js → consent.js → state.js → players.js → leaderboard.js →
+leaderboard-ui.js → sound.js → effects.js → mp-engine.js → network.js → mp-net.js → game.js →
+share.js → mp-ui.js → controller.js → mp-client.js → main.js
 ```
 
 Functions and the large mutable state objects (`gameState`, `sessionManager`, `joystickState`,
@@ -59,15 +62,20 @@ joystick input (RTDB) + actions (Firestore). Mobile captures the joystick and wr
 scales with joystick magnitude. Eating again within `gameConfig.comboWindowMs` builds a combo
 multiplier (capped at `maxCombo`), surfaced as a draining yellow badge over the board.
 
-**Analytics (GA4).** Firebase Analytics loads alongside the other SDKs; `config.js` creates a
-guarded `analytics` handle (its **own** try/catch so an analytics failure never drops the app into
-offline mode). Everything goes through one helper — `trackEvent(name, params)` in `utils.js` — which
-**no-ops when analytics is unavailable** (ad-block / offline) and **never throws into gameplay**,
+**Analytics (GA4) — consent-gated, OFF by default.** The GA4 SDK script loads with the other
+Firebase SDKs, but the handle is **never** created until the user opts in: `enableAnalytics()` in
+`config.js` is the **only** place `firebase.analytics()` is ever called, and `consent.js` decides
+whether to call it (an active **Accept**, or a returning visitor who previously accepted). No consent
+→ no `analytics` handle, no `_ga` cookies, no gtag runtime; `navigator.doNotTrack` /
+`globalPrivacyControl` auto-decline. Only the **desktop host** shows the consent banner (a phone
+arrives mid-join via `?session=`, so it inherits "declined until the host site is visited").
+Everything then goes through one helper — `trackEvent(name, params)` in `utils.js` — which **no-ops
+when analytics is unavailable** (declined / ad-block / offline) and **never throws into gameplay**,
 auto-tagging every event with `device_role` (`desktop_host` vs `phone_controller`). Custom events
 span the funnel (`session_created`, `controller_arrival`, `controller_connected`,
-`game_start`/`game_restart`, `game_over`/`post_score`, `share`, `mute_toggle`, `pwa_install`); GA4
-auto-captures audience + `utm_*` acquisition. **Never log PII or the 6-digit session code.** Full
-reference + how to view: `.agent/system/analytics.md`.
+`game_start`/`game_restart`, `game_over`/`post_score`, `share`, `mute_toggle`, `pwa_install`,
+`consent_update`); GA4 auto-captures audience + `utm_*` acquisition. **Never log PII or the 6-digit
+session code.** Full reference + how to view: `.agent/system/analytics.md`.
 
 **Phone-controller capabilities (graceful degradation).** The controller leans on a cluster of
 *optional* browser APIs — `navigator.vibrate` (with an iOS `<input switch>` haptic shim), Web Share,
@@ -81,8 +89,11 @@ capability/browser support matrix + manual re-verify checklist lives in
 - `js/utils.js` — small shared helpers, incl. `trackEvent()` (the hardened GA4 analytics wrapper).
 - `js/logic.js` — **pure, testable** game math: joystick→angle/speed mapping, collision, turn step.
   Unit-tested in `tests/` (the only code with real coverage).
-- `js/config.js` — Firebase init (incl. the guarded `analytics` / GA4 handle) + all tunables
-  (`gameConfig`) + `colors` + `GameState` enum.
+- `js/config.js` — Firebase init + `enableAnalytics()` (the **sole** `firebase.analytics()` call,
+  consent-gated) + all tunables (`gameConfig`, incl. `maxPlayers`) + `colors` + `GameState` enum.
+- `js/consent.js` — the GA4 **consent gate** + privacy-policy modal: resolves the stored decision
+  (`snake_consent` in `localStorage`), honours DNT/GPC, shows the host-only consent banner, and
+  calls `enableAnalytics()` only on opt-in. Pure helpers exported for Vitest.
 - `js/state.js` — the global mutable state objects.
 - `js/leaderboard.js` — local high scores (`localStorage`) **plus** the global Firestore
   leaderboard: per-device id/handle, score submission (monotonic, rules-validated), and the
@@ -99,12 +110,16 @@ capability/browser support matrix + manual re-verify checklist lives in
 - **Multiplayer (1–`gameConfig.maxPlayers` players, "last snake standing")** — modular, each file
   ≤~250 lines: `js/players.js` (slots/colors/factories — `maxPlayers` is THE knob; rules already
   accept p1–p6), `js/mp-engine.js` (the N-snake simulation; `gameState.mode === 'multi'`),
-  `js/mp-net.js` (desktop sync: roster, per-slot joystick/actions, results), `js/mp-client.js`
-  (phone: race-safe slot claim with rejoin token, own-slot haptics), `js/mp-ui.js` (lobby chips,
-  scoreboard, end screen, phone identity — all generated from `PLAYER_SLOTS`). 1-player rounds run
-  the CLASSIC solo engine incl. the leaderboard; ≥2 use the arena (no leaderboard).
+  `js/mp-net.js` (desktop sync: roster, **per-slot RTDB listeners** for O(1) joystick/actions,
+  results, **plus presence & host-resilience — `onDisconnect`-first, reconcile, stale-player
+  eviction**), `js/mp-client.js` (phone: race-safe slot claim with rejoin token, own-slot haptics,
+  presence heartbeat), `js/mp-ui.js` (lobby chips, scoreboard, end screen, phone identity — all
+  generated from `PLAYER_SLOTS`). 1-player rounds run the CLASSIC solo engine incl. the leaderboard;
+  ≥2 use the arena (no leaderboard).
 - `css/` — load order `variables.css` (tokens) → `base.css` → `desktop.css` / `mobile.css` →
-  `leaderboard.css` → `multiplayer.css`.
+  `leaderboard.css` → `multiplayer.css`. `mobile.css` holds the responsive three-zone controller
+  layout (`100dvh` + `env(safe-area-inset-*)` aware); `multiplayer.css` adds the phone
+  player-identity / queue states (player-color tint, ready-pulse, queued dimming).
 - `sw.js` + `manifest.json` — PWA: installable + offline shell. The SW is **network-first** for
   same-origin requests (cache = offline fallback only); bump `CACHE` when shell assets change.
 
@@ -127,8 +142,10 @@ capability/browser support matrix + manual re-verify checklist lives in
   documented in `.agent/system/firebase_schema.md`.
 - Everything shares global scope — renaming a function or variable can break a consumer in
   another file. ESLint's `no-undef` is **on** (error) with every cross-file global declared in
-  `.eslintrc.json` `globals`: when you add/rename/remove a top-level function or `let`/`const`
-  in `public/js/*`, update that list or CI fails (that failure is the feature).
+  `.eslintrc.json` `globals`, and a dedicated guard (`npm run check:globals`, run in CI via
+  `scripts/check-globals.mjs`) fails the build if that list **drifts in either direction** from the
+  top-level declarations in `public/js/*`: when you add/rename/remove a top-level function or
+  `let`/`const`, update that list or CI fails (that failure is the feature).
 - **ESLint `no-unused-vars` false positives** are expected for cross-file *functions* (e.g.
   `submitGlobalScore` is defined in `leaderboard.js` but called from `game.js`): ESLint lints each
   file alone, so it can't see those reads. They're **warnings** (the lint command still exits 0) —

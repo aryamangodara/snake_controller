@@ -104,7 +104,7 @@ Thank you for your interest in contributing! We welcome contributions from devel
 // Use modern ES6+ syntax
 const gameConfig = {
     speed: 2.0,
-    maxPlayers: 2
+    maxPlayers: 3
 };
 
 // Use descriptive variable names
@@ -180,11 +180,12 @@ function handleJoystickInput(input) {
 ```
 ├── public/                 # Everything that ships (Firebase Hosting serves this)
 │   ├── css/                # variables → base → desktop / mobile (load order matters)
-│   ├── js/                 # 13 plain <script>s, one shared global scope, no bundler
+│   ├── js/                 # 19 plain <script>s, one shared global scope, no bundler
 │   ├── index.html          # both views: desktop host + mobile controller
 │   ├── sw.js               # network-first service worker (PWA offline shell)
 │   └── manifest.json       # PWA manifest
-├── tests/                  # Vitest unit tests for js/logic.js
+├── tests/                  # Vitest: pure logic, jsdom protocol smoke, capability + mp-presence,
+│                           #   and emulated Firebase-rules tests (npm run test:rules)
 ├── firebase.json           # Firebase Hosting config
 ├── .github/workflows/      # GitHub Actions CI/CD (auto-deploy on master)
 ├── CLAUDE.md               # architecture map for contributors & AI agents
